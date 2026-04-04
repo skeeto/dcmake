@@ -255,7 +255,11 @@ static void render_ui(Debugger *dbg)
             dbg->status = "Running...";
         }
         if (stopped && ImGui::IsKeyPressed(ImGuiKey_F11)) {
-            dap_request(dbg, "stepIn", {{"threadId", dbg->thread_id}});
+            if (io.KeyShift) {
+                dap_request(dbg, "stepOut", {{"threadId", dbg->thread_id}});
+            } else {
+                dap_request(dbg, "stepIn", {{"threadId", dbg->thread_id}});
+            }
             dbg->state = DapState::RUNNING;
             dbg->status = "Running...";
         }
@@ -300,6 +304,12 @@ static void render_ui(Debugger *dbg)
     ImGui::SameLine();
     if (ImGui::Button("Step In")) {
         dap_request(dbg, "stepIn", {{"threadId", dbg->thread_id}});
+        dbg->state = DapState::RUNNING;
+        dbg->status = "Running...";
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Step Out")) {
+        dap_request(dbg, "stepOut", {{"threadId", dbg->thread_id}});
         dbg->state = DapState::RUNNING;
         dbg->status = "Running...";
     }

@@ -31,6 +31,7 @@ expansion (`$VAR` on Unix, `%VAR%` on Windows).
 | Shift+F5 | Stop |
 | F10 | Step Over |
 | F11 | Step In |
+| Shift+F11 | Step Out |
 
 
 [DAP]: https://microsoft.github.io/debug-adapter-protocol/
