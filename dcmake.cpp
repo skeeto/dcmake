@@ -1,0 +1,494 @@
+#include "dcmake.h"
+
+#include <cstdio>
+#include <cstring>
+#include <fstream>
+#include <sstream>
+
+#include <errno.h>
+#include <signal.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+#include <imgui.h>
+#include <nlohmann/json.hpp>
+
+using json = nlohmann::json;
+
+// --- DAP wire protocol ---
+
+static void dap_send(Debugger *dbg, const json &msg)
+{
+    std::string body = msg.dump();
+    char header[64];
+    int hlen = snprintf(header, sizeof(header),
+                        "Content-Length: %zu\r\n\r\n", body.size());
+    // Write header then body (main thread only, no mutex needed)
+    if (dbg->sock_fd >= 0) {
+        write(dbg->sock_fd, header, hlen);
+        write(dbg->sock_fd, body.data(), body.size());
+    }
+}
+
+static void dap_request(Debugger *dbg, const char *command,
+                        json arguments = json::object())
+{
+    json msg = {
+        {"seq", dbg->next_seq++},
+        {"type", "request"},
+        {"command", command},
+        {"arguments", arguments},
+    };
+    dap_send(dbg, msg);
+}
+
+// Reader thread: reads from socket, parses Content-Length framing,
+// pushes complete JSON strings into dbg->inbox.
+static void reader_thread_func(Debugger *dbg)
+{
+    std::string buf;
+    char tmp[4096];
+
+    while (dbg->reader_running.load()) {
+        ssize_t n = read(dbg->sock_fd, tmp, sizeof(tmp));
+        if (n <= 0) {
+            dbg->reader_running.store(false);
+            break;
+        }
+        buf.append(tmp, n);
+
+        // Process as many complete messages as possible
+        for (;;) {
+            // Need at least the header separator
+            auto sep = buf.find("\r\n\r\n");
+            if (sep == std::string::npos) break;
+
+            // Parse Content-Length from headers
+            int content_length = 0;
+            std::string_view headers(buf.data(), sep);
+            auto cl = headers.find("Content-Length:");
+            if (cl == std::string_view::npos) {
+                // Malformed -- skip this header block
+                buf.erase(0, sep + 4);
+                continue;
+            }
+            content_length = std::atoi(buf.data() + cl + 15);
+
+            size_t msg_start = sep + 4;
+            size_t msg_end = msg_start + content_length;
+            if (buf.size() < msg_end) break; // need more data
+
+            std::string message = buf.substr(msg_start, content_length);
+            buf.erase(0, msg_end);
+
+            std::lock_guard<std::mutex> lock(dbg->queue_mutex);
+            dbg->inbox.push_back(std::move(message));
+        }
+    }
+}
+
+// --- Source file cache ---
+
+static SourceFile *get_source(Debugger *dbg, const std::string &path)
+{
+    for (auto &sf : dbg->sources) {
+        if (sf.path == path) return &sf;
+    }
+
+    // Load from disk
+    std::ifstream f(path);
+    if (!f.is_open()) return nullptr;
+
+    SourceFile sf;
+    sf.path = path;
+    std::string line;
+    while (std::getline(f, line)) {
+        sf.lines.push_back(std::move(line));
+    }
+    dbg->sources.push_back(std::move(sf));
+    return &dbg->sources.back();
+}
+
+// --- DAP message handlers ---
+
+static void handle_response(Debugger *dbg, const json &msg)
+{
+    std::string command = msg.value("command", "");
+    bool success = msg.value("success", false);
+
+    if (!success) {
+        dbg->status = "Error: " + msg.value("message", "unknown error");
+        return;
+    }
+
+    if (command == "initialize") {
+        // Capabilities received; wait for initialized event
+    } else if (command == "configurationDone") {
+        // Wait for stopped event
+    } else if (command == "stackTrace") {
+        auto &body = msg["body"];
+        dbg->stack.clear();
+        for (auto &frame : body["stackFrames"]) {
+            StackFrame sf;
+            sf.id = frame.value("id", 0);
+            sf.name = frame.value("name", "");
+            if (frame.contains("source") && frame["source"].contains("path")) {
+                sf.source_path = frame["source"]["path"];
+            }
+            sf.line = frame.value("line", 0);
+            dbg->stack.push_back(std::move(sf));
+        }
+        // Update current source view from top frame
+        if (!dbg->stack.empty()) {
+            auto &top = dbg->stack[0];
+            if (!top.source_path.empty()) {
+                dbg->current_source = get_source(dbg, top.source_path);
+                dbg->current_line = top.line;
+                dbg->scroll_to_line = true;
+                dbg->status = top.source_path + ":" + std::to_string(top.line);
+            }
+        }
+        dbg->state = DapState::STOPPED;
+    } else if (command == "continue" || command == "next" ||
+               command == "stepIn" || command == "stepOut") {
+        // Acknowledgement; wait for stopped/terminated event
+    } else if (command == "disconnect") {
+        // Clean disconnect acknowledged
+    }
+}
+
+static void handle_event(Debugger *dbg, const json &msg)
+{
+    std::string event = msg.value("event", "");
+
+    if (event == "initialized") {
+        // Send pause before configurationDone so cmake stops at the first line.
+        // CMake's adapter processes requests in order on its session thread:
+        // pause sets PauseRequest flag, then configurationDone unblocks cmake,
+        // and cmake immediately hits the flag on the first function call.
+        dap_request(dbg, "pause", {{"threadId", 0}});
+        dap_request(dbg, "configurationDone");
+    } else if (event == "stopped") {
+        auto &body = msg["body"];
+        dbg->thread_id = body.value("threadId", dbg->thread_id);
+        std::string reason = body.value("reason", "");
+        dbg->status = "Stopped (" + reason + ")";
+
+        // Request stack trace to know where we are
+        dap_request(dbg, "stackTrace", {{"threadId", dbg->thread_id}});
+    } else if (event == "terminated") {
+        dbg->state = DapState::TERMINATED;
+        dbg->status = "Terminated";
+        dap_request(dbg, "disconnect");
+    } else if (event == "exited") {
+        auto &body = msg["body"];
+        int code = body.value("exitCode", -1);
+        dbg->status = "Exited (code " + std::to_string(code) + ")";
+    } else if (event == "thread") {
+        // Thread started/exited -- informational only
+    } else if (event == "output") {
+        // CMake output -- could log somewhere eventually
+    }
+}
+
+static void process_messages(Debugger *dbg)
+{
+    std::vector<std::string> messages;
+    {
+        std::lock_guard<std::mutex> lock(dbg->queue_mutex);
+        messages.swap(dbg->inbox);
+    }
+
+    for (auto &raw : messages) {
+        json msg;
+        try {
+            msg = json::parse(raw);
+        } catch (const json::parse_error &) {
+            dbg->status = "JSON parse error";
+            continue;
+        }
+
+        std::string type = msg.value("type", "");
+        if (type == "response") {
+            handle_response(dbg, msg);
+        } else if (type == "event") {
+            handle_event(dbg, msg);
+        }
+    }
+
+    // Check if reader thread died (socket closed)
+    if (!dbg->reader_running.load() &&
+        dbg->state != DapState::IDLE &&
+        dbg->state != DapState::TERMINATED) {
+        dbg->state = DapState::TERMINATED;
+        if (dbg->status.find("Exited") == std::string::npos &&
+            dbg->status.find("Terminated") == std::string::npos) {
+            dbg->status = "Connection lost";
+        }
+    }
+}
+
+// --- ImGui UI ---
+
+static void render_ui(Debugger *dbg)
+{
+    ImGuiViewport *vp = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(vp->WorkPos);
+    ImGui::SetNextWindowSize(vp->WorkSize);
+    ImGui::Begin("dcmake", nullptr,
+                 ImGuiWindowFlags_NoTitleBar |
+                 ImGuiWindowFlags_NoResize |
+                 ImGuiWindowFlags_NoMove |
+                 ImGuiWindowFlags_NoCollapse |
+                 ImGuiWindowFlags_NoBringToFrontOnFocus);
+
+    // Toolbar
+    bool stopped = dbg->state == DapState::STOPPED;
+    ImGui::BeginDisabled(!stopped);
+    if (ImGui::Button("Continue")) {
+        dap_request(dbg, "continue", {{"threadId", dbg->thread_id}});
+        dbg->state = DapState::RUNNING;
+        dbg->status = "Running...";
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Step Over")) {
+        dap_request(dbg, "next", {{"threadId", dbg->thread_id}});
+        dbg->state = DapState::RUNNING;
+        dbg->status = "Running...";
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Step In")) {
+        dap_request(dbg, "stepIn", {{"threadId", dbg->thread_id}});
+        dbg->state = DapState::RUNNING;
+        dbg->status = "Running...";
+    }
+    ImGui::EndDisabled();
+
+    ImGui::SameLine();
+    ImGui::Text(" | ");
+    ImGui::SameLine();
+    ImGui::TextUnformatted(dbg->status.c_str());
+
+    ImGui::Separator();
+
+    // Source view + stack trace split
+    float stack_height = ImGui::GetTextLineHeightWithSpacing() *
+                         (float)(dbg->stack.size() + 2);
+    float avail = ImGui::GetContentRegionAvail().y;
+    float source_height = avail - stack_height;
+    if (source_height < avail * 0.3f) source_height = avail * 0.7f;
+
+    // Source view
+    ImGui::BeginChild("Source", ImVec2(0, source_height), ImGuiChildFlags_Borders,
+                      ImGuiWindowFlags_HorizontalScrollbar);
+    if (dbg->current_source && !dbg->current_source->lines.empty()) {
+        int line_count = (int)dbg->current_source->lines.size();
+        float line_height = ImGui::GetTextLineHeightWithSpacing();
+
+        // Digits needed for line numbers
+        int gutter_digits = 1;
+        for (int n = line_count; n >= 10; n /= 10) gutter_digits++;
+
+        ImGuiListClipper clipper;
+        clipper.Begin(line_count);
+        while (clipper.Step()) {
+            for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++) {
+                int line_num = i + 1;
+                bool is_current = (line_num == dbg->current_line);
+
+                if (is_current) {
+                    ImVec2 pos = ImGui::GetCursorScreenPos();
+                    float width = ImGui::GetContentRegionAvail().x +
+                                  ImGui::GetScrollX();
+                    ImGui::GetWindowDrawList()->AddRectFilled(
+                        pos,
+                        ImVec2(pos.x + width, pos.y + line_height),
+                        IM_COL32(80, 80, 30, 255));
+                }
+
+                // Line number gutter
+                ImGui::TextDisabled("%*d", gutter_digits, line_num);
+                ImGui::SameLine();
+
+                // Arrow marker
+                if (is_current) {
+                    ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.2f, 1.0f), "->");
+                } else {
+                    ImGui::TextUnformatted("  ");
+                }
+                ImGui::SameLine();
+
+                // Source text
+                ImGui::TextUnformatted(dbg->current_source->lines[i].c_str());
+            }
+        }
+
+        // Auto-scroll to current line
+        if (dbg->scroll_to_line && dbg->current_line > 0) {
+            float target_y = (dbg->current_line - 1) * line_height;
+            float window_h = ImGui::GetWindowHeight();
+            ImGui::SetScrollY(target_y - window_h / 2.0f);
+            dbg->scroll_to_line = false;
+        }
+    } else if (dbg->state == DapState::IDLE || dbg->state == DapState::CONNECTING ||
+               dbg->state == DapState::INITIALIZING) {
+        ImGui::TextDisabled("Waiting for debugger connection...");
+    } else if (dbg->state == DapState::TERMINATED) {
+        ImGui::TextDisabled("Session ended.");
+    }
+    ImGui::EndChild();
+
+    // Stack trace panel
+    ImGui::BeginChild("Stack", ImVec2(0, 0), ImGuiChildFlags_Borders);
+    ImGui::TextDisabled("Call Stack");
+    for (int i = 0; i < (int)dbg->stack.size(); i++) {
+        auto &f = dbg->stack[i];
+        char label[512];
+        snprintf(label, sizeof(label), "%s%s  %s:%d",
+                 i == 0 ? "> " : "  ",
+                 f.name.c_str(),
+                 f.source_path.c_str(),
+                 f.line);
+        ImGui::TextUnformatted(label);
+    }
+    ImGui::EndChild();
+
+    ImGui::End();
+}
+
+// --- Lifecycle ---
+
+void dcmake_init(Debugger *dbg, int argc, char **argv)
+{
+    dbg->next_seq = 1;
+    dbg->state = DapState::CONNECTING;
+    dbg->status = "Connecting...";
+
+    // Build pipe path
+    dbg->pipe_path = "/tmp/dcmake-" + std::to_string(getpid()) + ".sock";
+    unlink(dbg->pipe_path.c_str());
+
+    // Build cmake argument list
+    std::vector<const char *> args;
+    args.push_back("cmake");
+    args.push_back("--debugger");
+    std::string pipe_arg = "--debugger-pipe=" + dbg->pipe_path;
+    args.push_back(pipe_arg.c_str());
+    for (int i = 1; i < argc; i++) {
+        args.push_back(argv[i]);
+    }
+    args.push_back(nullptr);
+
+    // Fork cmake subprocess
+    pid_t pid = fork();
+    if (pid == 0) {
+        // Child
+        execvp("cmake", const_cast<char *const *>(args.data()));
+        _exit(127);
+    }
+    if (pid < 0) {
+        dbg->status = "Failed to fork cmake";
+        dbg->state = DapState::TERMINATED;
+        return;
+    }
+    dbg->cmake_pid = pid;
+
+    // Connect to cmake's unix domain socket (retry loop)
+    dbg->sock_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (dbg->sock_fd < 0) {
+        dbg->status = "Failed to create socket";
+        dbg->state = DapState::TERMINATED;
+        return;
+    }
+
+    sockaddr_un addr = {};
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, dbg->pipe_path.c_str(), sizeof(addr.sun_path) - 1);
+
+    bool connected = false;
+    for (int i = 0; i < 500; i++) {
+        if (connect(dbg->sock_fd, (sockaddr *)&addr, sizeof(addr)) == 0) {
+            connected = true;
+            break;
+        }
+        // Check if cmake exited prematurely
+        int wstatus;
+        if (waitpid(dbg->cmake_pid, &wstatus, WNOHANG) > 0) {
+            dbg->cmake_pid = -1;
+            break;
+        }
+        usleep(10000); // 10ms
+    }
+
+    if (!connected) {
+        close(dbg->sock_fd);
+        dbg->sock_fd = -1;
+        dbg->status = "Failed to connect to cmake debugger";
+        dbg->state = DapState::TERMINATED;
+        return;
+    }
+
+    // Start reader thread
+    dbg->reader_running.store(true);
+    dbg->reader_thread = std::thread(reader_thread_func, dbg);
+
+    // Send initialize request
+    dbg->state = DapState::INITIALIZING;
+    dbg->status = "Initializing...";
+    dap_request(dbg, "initialize", {
+        {"adapterID", "dcmake"},
+        {"clientID", "dcmake"},
+        {"clientName", "dcmake"},
+        {"linesStartAt1", true},
+        {"columnsStartAt1", true},
+        {"pathFormat", "path"},
+    });
+}
+
+void dcmake_frame(Debugger *dbg)
+{
+    process_messages(dbg);
+
+    // Check if cmake exited (non-blocking)
+    if (dbg->cmake_pid > 0) {
+        int wstatus;
+        if (waitpid(dbg->cmake_pid, &wstatus, WNOHANG) > 0) {
+            dbg->cmake_pid = -1;
+        }
+    }
+
+    render_ui(dbg);
+}
+
+void dcmake_shutdown(Debugger *dbg)
+{
+    // Send disconnect if still connected
+    if (dbg->sock_fd >= 0 && dbg->state != DapState::TERMINATED) {
+        dap_request(dbg, "disconnect");
+    }
+
+    // Stop reader thread
+    dbg->reader_running.store(false);
+    if (dbg->sock_fd >= 0) {
+        shutdown(dbg->sock_fd, SHUT_RDWR);
+        close(dbg->sock_fd);
+        dbg->sock_fd = -1;
+    }
+    if (dbg->reader_thread.joinable()) {
+        dbg->reader_thread.join();
+    }
+
+    // Clean up socket file
+    if (!dbg->pipe_path.empty()) {
+        unlink(dbg->pipe_path.c_str());
+    }
+
+    // Kill cmake if still running
+    if (dbg->cmake_pid > 0) {
+        kill(dbg->cmake_pid, SIGTERM);
+        waitpid(dbg->cmake_pid, nullptr, 0);
+        dbg->cmake_pid = -1;
+    }
+}
