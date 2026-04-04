@@ -19,6 +19,7 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(
 
 struct Win32Platform {
     HANDLE pipe = INVALID_HANDLE_VALUE;
+    HANDLE job = INVALID_HANDLE_VALUE;
     HANDLE cmake_process = INVALID_HANDLE_VALUE;
     OVERLAPPED read_op = {};
     OVERLAPPED write_op = {};
@@ -129,15 +130,27 @@ bool platform_launch(Debugger *dbg, const char *args)
     cmdline += L' ';
     cmdline += to_wide(args);
 
-    // Launch cmake subprocess
+    // Create job object so the entire process tree dies together.
+    // KILL_ON_JOB_CLOSE ensures cleanup even if dcmake crashes.
+    p->job = CreateJobObjectW(nullptr, nullptr);
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION jeli = {};
+    jeli.BasicLimitInformation.LimitFlags =
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    SetInformationJobObject(p->job, JobObjectExtendedLimitInformation,
+                            &jeli, sizeof(jeli));
+
+    // Launch cmake subprocess suspended, assign to job, then resume
     STARTUPINFOW si = {};
     si.cb = sizeof(si);
     PROCESS_INFORMATION pi = {};
     if (!CreateProcessW(nullptr, cmdline.data(), nullptr, nullptr,
-                        FALSE, 0, nullptr, nullptr, &si, &pi)) {
+                        FALSE, CREATE_SUSPENDED, nullptr, nullptr,
+                        &si, &pi)) {
         dbg->status = "Failed to start cmake";
         return false;
     }
+    AssignProcessToJobObject(p->job, pi.hProcess);
+    ResumeThread(pi.hThread);
     CloseHandle(pi.hThread);
     p->cmake_process = pi.hProcess;
 
@@ -181,9 +194,15 @@ void platform_cleanup(Debugger *dbg)
     if (p->read_op.hEvent) CloseHandle(p->read_op.hEvent);
     if (p->write_op.hEvent) CloseHandle(p->write_op.hEvent);
 
+    if (p->job != INVALID_HANDLE_VALUE) {
+        TerminateJobObject(p->job, 1);
+        if (p->cmake_process != INVALID_HANDLE_VALUE) {
+            WaitForSingleObject(p->cmake_process, 3000);
+        }
+        CloseHandle(p->job);
+        p->job = INVALID_HANDLE_VALUE;
+    }
     if (p->cmake_process != INVALID_HANDLE_VALUE) {
-        TerminateProcess(p->cmake_process, 1);
-        WaitForSingleObject(p->cmake_process, 3000);
         CloseHandle(p->cmake_process);
         p->cmake_process = INVALID_HANDLE_VALUE;
     }
