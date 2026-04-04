@@ -14,8 +14,8 @@ FetchContent_Declare(
 
 FetchContent_Declare(
   imgui
-  GIT_REPOSITORY https://github.com/ocornut/imgui.git
-  GIT_TAG docking
+  URL https://github.com/ocornut/imgui/archive/f5f6ca07be7ce0ea9eed6c04d55833bac3f6b50b.tar.gz
+  URL_HASH SHA256=91aed5e92c1e24aada8dfd2a6933222341ec291dc29a4add49828610d5cb6765
 )
 
 FetchContent_Declare(
