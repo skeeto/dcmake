@@ -222,7 +222,7 @@ static void handle_response(Debugger *dbg, const json &msg)
                 dbg->current_source = get_source(dbg, top.source_path);
                 dbg->current_line = top.line;
                 dbg->scroll_to_line = true;
-                dbg->status = top.source_path + ":" + std::to_string(top.line);
+                dbg->status = "Paused";
             }
             // Request scopes for top frame
             dap_request(dbg, "scopes", {{"frameId", top.id}});
@@ -383,18 +383,17 @@ static void handle_event(Debugger *dbg, const json &msg)
     } else if (event == "stopped") {
         auto &body = msg["body"];
         dbg->thread_id = body.value("threadId", dbg->thread_id);
-        std::string reason = body.value("reason", "");
-        dbg->status = "Stopped (" + reason + ")";
+        dbg->status = "Paused";
 
         dap_request(dbg, "stackTrace", {{"threadId", dbg->thread_id}});
     } else if (event == "terminated") {
         dbg->state = DapState::TERMINATED;
-        dbg->status = "Terminated";
+        dbg->status = "Stopped";
         dap_request(dbg, "disconnect");
     } else if (event == "exited") {
         auto &body = msg["body"];
         int code = body.value("exitCode", -1);
-        dbg->status = "Exited (code " + std::to_string(code) + ")";
+        dbg->status = "Stopped (exit " + std::to_string(code) + ")";
     } else if (event == "breakpoint") {
         // Breakpoint verified/changed
         if (msg.contains("body") && msg["body"].contains("breakpoint")) {
@@ -448,7 +447,7 @@ static void process_messages(Debugger *dbg)
         dbg->state = DapState::TERMINATED;
         if (dbg->status.find("Exited") == std::string::npos &&
             dbg->status.find("Terminated") == std::string::npos) {
-            dbg->status = "Connection lost";
+            dbg->status = "Stopped";
         }
     }
 }
@@ -474,7 +473,7 @@ static void render_toolbar(Debugger *dbg)
             } else if (stopped) {
                 dap_request(dbg, "continue", {{"threadId", dbg->thread_id}});
                 dbg->state = DapState::RUNNING;
-                dbg->status = "Running...";
+                dbg->status = "Running";
             }
         }
         if (ImGui::IsKeyPressed(ImGuiKey_F10)) {
@@ -484,7 +483,7 @@ static void render_toolbar(Debugger *dbg)
             } else if (stopped) {
                 dap_request(dbg, "next", {{"threadId", dbg->thread_id}});
                 dbg->state = DapState::RUNNING;
-                dbg->status = "Running...";
+                dbg->status = "Running";
             }
         }
         if (ImGui::IsKeyPressed(ImGuiKey_F11)) {
@@ -492,7 +491,7 @@ static void render_toolbar(Debugger *dbg)
                 if (stopped) {
                     dap_request(dbg, "stepOut", {{"threadId", dbg->thread_id}});
                     dbg->state = DapState::RUNNING;
-                    dbg->status = "Running...";
+                    dbg->status = "Running";
                 }
             } else if (editable) {
                 dbg->pause_at_entry = true;
@@ -500,7 +499,7 @@ static void render_toolbar(Debugger *dbg)
             } else if (stopped) {
                 dap_request(dbg, "stepIn", {{"threadId", dbg->thread_id}});
                 dbg->state = DapState::RUNNING;
-                dbg->status = "Running...";
+                dbg->status = "Running";
             }
         }
     }
@@ -528,7 +527,7 @@ static void render_toolbar(Debugger *dbg)
         if (ImGui::Button("Continue")) {
             dap_request(dbg, "continue", {{"threadId", dbg->thread_id}});
             dbg->state = DapState::RUNNING;
-            dbg->status = "Running...";
+            dbg->status = "Running";
         }
     }
     ImGui::EndDisabled();
@@ -551,7 +550,7 @@ static void render_toolbar(Debugger *dbg)
         } else {
             dap_request(dbg, "next", {{"threadId", dbg->thread_id}});
             dbg->state = DapState::RUNNING;
-            dbg->status = "Running...";
+            dbg->status = "Running";
         }
     }
     ImGui::SameLine();
@@ -562,7 +561,7 @@ static void render_toolbar(Debugger *dbg)
         } else {
             dap_request(dbg, "stepIn", {{"threadId", dbg->thread_id}});
             dbg->state = DapState::RUNNING;
-            dbg->status = "Running...";
+            dbg->status = "Running";
         }
     }
     ImGui::EndDisabled();
@@ -571,14 +570,32 @@ static void render_toolbar(Debugger *dbg)
     if (ImGui::Button("Step Out")) {
         dap_request(dbg, "stepOut", {{"threadId", dbg->thread_id}});
         dbg->state = DapState::RUNNING;
-        dbg->status = "Running...";
+        dbg->status = "Running";
     }
     ImGui::EndDisabled();
 
     ImGui::SameLine();
     ImGui::Text(" | ");
     ImGui::SameLine();
-    ImGui::TextUnformatted(dbg->status.c_str());
+    switch (dbg->state) {
+    case DapState::CONNECTING:
+    case DapState::INITIALIZING:
+    case DapState::RUNNING:
+        ImGui::TextColored(ImVec4(0.2f, 0.9f, 0.2f, 1.0f), "%s",
+                           dbg->status.c_str());
+        break;
+    case DapState::STOPPED:
+        ImGui::TextColored(ImVec4(1.0f, 0.9f, 0.2f, 1.0f), "%s",
+                           dbg->status.c_str());
+        break;
+    case DapState::TERMINATED:
+        ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "%s",
+                           dbg->status.c_str());
+        break;
+    default:
+        ImGui::TextUnformatted(dbg->status.c_str());
+        break;
+    }
 }
 
 static void render_source(Debugger *dbg)
@@ -996,7 +1013,7 @@ void dcmake_start(Debugger *dbg)
     dbg->inbox.clear();
 
     dbg->state = DapState::CONNECTING;
-    dbg->status = "Connecting...";
+    dbg->status = "Running";
 
     if (!platform_launch(dbg, dbg->cmdline)) {
         dbg->state = DapState::TERMINATED;
@@ -1009,7 +1026,7 @@ void dcmake_start(Debugger *dbg)
 
     // Begin DAP handshake
     dbg->state = DapState::INITIALIZING;
-    dbg->status = "Initializing...";
+    dbg->status = "Running";
     dap_request(dbg, "initialize", {
         {"adapterID", "dcmake"},
         {"clientID", "dcmake"},
