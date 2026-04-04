@@ -33,6 +33,16 @@ expansion (`$VAR` on Unix, `%VAR%` on Windows).
 | F11 | Start (break at first line) / Step In |
 | Shift+F11 | Step Out |
 
+## Configuration
+
+Layout and window state are saved to `imgui.ini` in a platform config
+directory:
+
+| Platform | Path |
+|----------|------|
+| Linux/macOS | `$XDG_CONFIG_HOME/dcmake/` or `~/.config/dcmake/` |
+| Windows | `%AppData%\dcmake\` |
+
 
 [DAP]: https://microsoft.github.io/debug-adapter-protocol/
 [doc]: https://cmake.org/cmake/help/latest/manual/cmake.1.html#cmdoption-cmake-debugger
