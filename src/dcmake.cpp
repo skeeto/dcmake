@@ -206,7 +206,7 @@ static void handle_response(Debugger *dbg, const json &msg)
         // Wait for stopped event
     } else if (command == "stackTrace") {
         auto &body = msg["body"];
-        dbg->stack.clear();
+        std::vector<StackFrame> new_stack;
         for (auto &frame : body["stackFrames"]) {
             StackFrame sf;
             sf.id = frame.value("id", 0);
@@ -215,8 +215,9 @@ static void handle_response(Debugger *dbg, const json &msg)
                 sf.source_path = frame["source"]["path"];
             }
             sf.line = frame.value("line", 0);
-            dbg->stack.push_back(std::move(sf));
+            new_stack.push_back(std::move(sf));
         }
+        dbg->stack = std::move(new_stack);
         if (!dbg->stack.empty()) {
             auto &top = dbg->stack[0];
             if (!top.source_path.empty()) {
@@ -230,18 +231,18 @@ static void handle_response(Debugger *dbg, const json &msg)
         }
         dbg->state = DapState::STOPPED;
     } else if (command == "scopes") {
-        dbg->scopes.clear();
+        std::vector<DapScope> new_scopes;
         if (msg.contains("body") && msg["body"].contains("scopes")) {
             for (auto &s : msg["body"]["scopes"]) {
                 DapScope scope;
                 scope.name = s.value("name", "");
                 scope.variables_ref = s.value("variablesReference", (int64_t)0);
-                dbg->scopes.push_back(std::move(scope));
+                new_scopes.push_back(std::move(scope));
             }
-            // Fetch variables for each scope
-            for (auto &scope : dbg->scopes) {
-                fetch_variables(dbg, scope.variables_ref);
-            }
+        }
+        dbg->scopes = std::move(new_scopes);
+        for (auto &scope : dbg->scopes) {
+            fetch_variables(dbg, scope.variables_ref);
         }
     } else if (command == "variables") {
         // Look up which variablesReference this response is for via request_seq.
@@ -713,7 +714,7 @@ static void render_locals(Debugger *dbg)
         return;
     }
 
-    if (dbg->state == DapState::STOPPED) {
+    if (dbg->state == DapState::STOPPED || dbg->state == DapState::RUNNING) {
         DapVariable *locals = find_scope_child(dbg, "Locals");
         if (locals) {
             if (!locals->fetched && locals->children.empty()) {
@@ -743,7 +744,7 @@ static void render_cache(Debugger *dbg)
         return;
     }
 
-    if (dbg->state == DapState::STOPPED) {
+    if (dbg->state == DapState::STOPPED || dbg->state == DapState::RUNNING) {
         DapVariable *cache = find_scope_child(dbg, "CacheVariables");
         if (cache) {
             if (!cache->fetched && cache->children.empty()) {
@@ -768,7 +769,7 @@ static void render_targets(Debugger *dbg)
         return;
     }
 
-    if (dbg->state == DapState::STOPPED) {
+    if (dbg->state == DapState::STOPPED || dbg->state == DapState::RUNNING) {
         DapVariable *targets = find_scope_child(dbg, "Targets");
         if (targets) {
             if (!targets->fetched && targets->children.empty()) {
@@ -793,7 +794,7 @@ static void render_tests(Debugger *dbg)
         return;
     }
 
-    if (dbg->state == DapState::STOPPED) {
+    if (dbg->state == DapState::STOPPED || dbg->state == DapState::RUNNING) {
         DapVariable *tests = find_scope_child(dbg, "Tests");
         if (tests) {
             if (!tests->fetched && tests->children.empty()) {
