@@ -376,7 +376,9 @@ static void handle_event(Debugger *dbg, const json &msg)
             send_breakpoints_for_file(dbg, f);
         }
 
-        dap_request(dbg, "pause", {{"threadId", 0}});
+        if (dbg->pause_at_entry) {
+            dap_request(dbg, "pause", {{"threadId", 0}});
+        }
         dap_request(dbg, "configurationDone");
     } else if (event == "stopped") {
         auto &body = msg["body"];
@@ -467,6 +469,7 @@ static void render_toolbar(Debugger *dbg)
             if (io.KeyShift) {
                 if (!idle) dcmake_stop(dbg);
             } else if (editable) {
+                dbg->pause_at_entry = false;
                 dcmake_start(dbg);
             } else if (stopped) {
                 dap_request(dbg, "continue", {{"threadId", dbg->thread_id}});
@@ -474,19 +477,31 @@ static void render_toolbar(Debugger *dbg)
                 dbg->status = "Running...";
             }
         }
-        if (stopped && ImGui::IsKeyPressed(ImGuiKey_F10)) {
-            dap_request(dbg, "next", {{"threadId", dbg->thread_id}});
-            dbg->state = DapState::RUNNING;
-            dbg->status = "Running...";
-        }
-        if (stopped && ImGui::IsKeyPressed(ImGuiKey_F11)) {
-            if (io.KeyShift) {
-                dap_request(dbg, "stepOut", {{"threadId", dbg->thread_id}});
-            } else {
-                dap_request(dbg, "stepIn", {{"threadId", dbg->thread_id}});
+        if (ImGui::IsKeyPressed(ImGuiKey_F10)) {
+            if (editable) {
+                dbg->pause_at_entry = true;
+                dcmake_start(dbg);
+            } else if (stopped) {
+                dap_request(dbg, "next", {{"threadId", dbg->thread_id}});
+                dbg->state = DapState::RUNNING;
+                dbg->status = "Running...";
             }
-            dbg->state = DapState::RUNNING;
-            dbg->status = "Running...";
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_F11)) {
+            if (io.KeyShift) {
+                if (stopped) {
+                    dap_request(dbg, "stepOut", {{"threadId", dbg->thread_id}});
+                    dbg->state = DapState::RUNNING;
+                    dbg->status = "Running...";
+                }
+            } else if (editable) {
+                dbg->pause_at_entry = true;
+                dcmake_start(dbg);
+            } else if (stopped) {
+                dap_request(dbg, "stepIn", {{"threadId", dbg->thread_id}});
+                dbg->state = DapState::RUNNING;
+                dbg->status = "Running...";
+            }
         }
     }
 
@@ -501,38 +516,58 @@ static void render_toolbar(Debugger *dbg)
         ImGui::EndDisabled();
     }
 
-    // Start/Stop button
+    // Start/Continue button (F5)
     ImGui::SameLine();
+    ImGui::BeginDisabled(!editable && !stopped);
     if (editable) {
         if (ImGui::Button("Start")) {
+            dbg->pause_at_entry = false;
             dcmake_start(dbg);
         }
     } else {
-        if (ImGui::Button("Stop")) {
-            dcmake_stop(dbg);
+        if (ImGui::Button("Continue")) {
+            dap_request(dbg, "continue", {{"threadId", dbg->thread_id}});
+            dbg->state = DapState::RUNNING;
+            dbg->status = "Running...";
         }
     }
+    ImGui::EndDisabled();
 
+    // Stop button (Shift+F5)
     ImGui::SameLine();
-    ImGui::BeginDisabled(!stopped);
-    if (ImGui::Button("Continue")) {
-        dap_request(dbg, "continue", {{"threadId", dbg->thread_id}});
-        dbg->state = DapState::RUNNING;
-        dbg->status = "Running...";
+    ImGui::BeginDisabled(idle);
+    if (ImGui::Button("Stop")) {
+        dcmake_stop(dbg);
     }
+    ImGui::EndDisabled();
+
+    // Step buttons — also start cmake from idle (with pause at entry)
     ImGui::SameLine();
+    ImGui::BeginDisabled(!stopped && !editable);
     if (ImGui::Button("Step Over")) {
-        dap_request(dbg, "next", {{"threadId", dbg->thread_id}});
-        dbg->state = DapState::RUNNING;
-        dbg->status = "Running...";
+        if (editable) {
+            dbg->pause_at_entry = true;
+            dcmake_start(dbg);
+        } else {
+            dap_request(dbg, "next", {{"threadId", dbg->thread_id}});
+            dbg->state = DapState::RUNNING;
+            dbg->status = "Running...";
+        }
     }
     ImGui::SameLine();
     if (ImGui::Button("Step In")) {
-        dap_request(dbg, "stepIn", {{"threadId", dbg->thread_id}});
-        dbg->state = DapState::RUNNING;
-        dbg->status = "Running...";
+        if (editable) {
+            dbg->pause_at_entry = true;
+            dcmake_start(dbg);
+        } else {
+            dap_request(dbg, "stepIn", {{"threadId", dbg->thread_id}});
+            dbg->state = DapState::RUNNING;
+            dbg->status = "Running...";
+        }
     }
+    ImGui::EndDisabled();
     ImGui::SameLine();
+    ImGui::BeginDisabled(!stopped);
     if (ImGui::Button("Step Out")) {
         dap_request(dbg, "stepOut", {{"threadId", dbg->thread_id}});
         dbg->state = DapState::RUNNING;

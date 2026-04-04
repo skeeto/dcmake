@@ -74,6 +74,7 @@ struct Debugger {
     void (*pipe_shutdown)(void *ctx) = nullptr;
 
     // DAP protocol state
+    bool pause_at_entry = false;
     int next_seq = 1;
     std::mutex queue_mutex;
     std::vector<std::string> inbox;

@@ -27,10 +27,10 @@ expansion (`$VAR` on Unix, `%VAR%` on Windows).
 
 | Key | Action |
 |-----|--------|
-| F5 | Start / Continue |
+| F5 | Start (free-running) / Continue |
 | Shift+F5 | Stop |
-| F10 | Step Over |
-| F11 | Step In |
+| F10 | Start (break at first line) / Step Over |
+| F11 | Start (break at first line) / Step In |
 | Shift+F11 | Step Out |
 
 
