@@ -230,7 +230,35 @@ static void render_ui(Debugger *dbg)
                  ImGuiWindowFlags_NoBringToFrontOnFocus);
 
     // Toolbar
+    bool idle = dbg->state == DapState::IDLE;
+    bool terminated = dbg->state == DapState::TERMINATED;
     bool stopped = dbg->state == DapState::STOPPED;
+    bool editable = idle || terminated;
+
+    // Command line text box
+    float avail_w = ImGui::GetContentRegionAvail().x;
+    ImGui::SetNextItemWidth(avail_w * 0.5f);
+    if (!editable) {
+        ImGui::BeginDisabled();
+    }
+    ImGui::InputText("##cmdline", dbg->cmdline, sizeof(dbg->cmdline));
+    if (!editable) {
+        ImGui::EndDisabled();
+    }
+
+    // Start/Stop button
+    ImGui::SameLine();
+    if (editable) {
+        if (ImGui::Button("Start")) {
+            dcmake_start(dbg);
+        }
+    } else {
+        if (ImGui::Button("Stop")) {
+            dcmake_stop(dbg);
+        }
+    }
+
+    ImGui::SameLine();
     ImGui::BeginDisabled(!stopped);
     if (ImGui::Button("Continue")) {
         dap_request(dbg, "continue", {{"threadId", dbg->thread_id}});
@@ -340,13 +368,32 @@ static void render_ui(Debugger *dbg)
 
 // --- Lifecycle ---
 
-void dcmake_init(Debugger *dbg, int argc, char **argv)
+void dcmake_init(Debugger *dbg)
 {
+    dbg->state = DapState::IDLE;
+    dbg->status = "Ready";
+}
+
+void dcmake_start(Debugger *dbg)
+{
+    // Clean up any previous session
+    if (dbg->state != DapState::IDLE) {
+        dcmake_stop(dbg);
+    }
+
     dbg->next_seq = 1;
+    dbg->thread_id = 0;
+    dbg->stack.clear();
+    dbg->sources.clear();
+    dbg->current_source = nullptr;
+    dbg->current_line = 0;
+    dbg->scroll_to_line = false;
+    dbg->inbox.clear();
+
     dbg->state = DapState::CONNECTING;
     dbg->status = "Connecting...";
 
-    if (!platform_launch(dbg, argc, argv)) {
+    if (!platform_launch(dbg, dbg->cmdline)) {
         dbg->state = DapState::TERMINATED;
         return;
     }
@@ -368,20 +415,10 @@ void dcmake_init(Debugger *dbg, int argc, char **argv)
     });
 }
 
-void dcmake_frame(Debugger *dbg)
+void dcmake_stop(Debugger *dbg)
 {
-    process_messages(dbg);
-    render_ui(dbg);
-}
+    if (dbg->state == DapState::IDLE) return;
 
-void dcmake_shutdown(Debugger *dbg)
-{
-    // Send disconnect if still connected
-    if (dbg->pipe_write && dbg->state != DapState::TERMINATED) {
-        dap_request(dbg, "disconnect");
-    }
-
-    // Unblock reader thread and join
     dbg->reader_running.store(false);
     if (dbg->pipe_shutdown) {
         dbg->pipe_shutdown(dbg->platform);
@@ -391,4 +428,28 @@ void dcmake_shutdown(Debugger *dbg)
     }
 
     platform_cleanup(dbg);
+
+    dbg->pipe_read = nullptr;
+    dbg->pipe_write = nullptr;
+    dbg->pipe_shutdown = nullptr;
+
+    dbg->state = DapState::IDLE;
+    dbg->status = "Stopped";
+}
+
+void dcmake_frame(Debugger *dbg)
+{
+    process_messages(dbg);
+    render_ui(dbg);
+}
+
+void dcmake_shutdown(Debugger *dbg)
+{
+    // Send disconnect if still connected
+    if (dbg->pipe_write && dbg->state != DapState::TERMINATED &&
+        dbg->state != DapState::IDLE) {
+        dap_request(dbg, "disconnect");
+    }
+
+    dcmake_stop(dbg);
 }

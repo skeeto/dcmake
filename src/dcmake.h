@@ -51,16 +51,20 @@ struct Debugger {
     std::thread reader_thread;
     std::atomic<bool> reader_running{false};
 
+    char cmdline[4096] = {};
     std::string status;
     bool want_quit = false;
 };
 
 // Platform layer must implement these.
-bool platform_launch(Debugger *dbg, int argc, char **argv);
+std::string platform_quote_argv(int argc, char **argv);
+bool platform_launch(Debugger *dbg, const char *args);
 void platform_cleanup(Debugger *dbg);
 
 // Shared logic called by the platform main loop.
-void dcmake_init(Debugger *dbg, int argc, char **argv);
+void dcmake_init(Debugger *dbg);
+void dcmake_start(Debugger *dbg);
+void dcmake_stop(Debugger *dbg);
 void dcmake_frame(Debugger *dbg);
 void dcmake_shutdown(Debugger *dbg);
 

@@ -93,7 +93,19 @@ static std::wstring to_wide(const char *utf8)
     return out;
 }
 
-bool platform_launch(Debugger *dbg, int argc, char **argv)
+// On Windows, just join argv[1..] with spaces. The original quoting from
+// CommandLineToArgvW round-trips through cmd /c fine.
+std::string platform_quote_argv(int argc, char **argv)
+{
+    std::string result;
+    for (int i = 1; i < argc; i++) {
+        if (i > 1) result += ' ';
+        result += argv[i];
+    }
+    return result;
+}
+
+bool platform_launch(Debugger *dbg, const char *args)
 {
     auto *p = new Win32Platform;
     p->read_op.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
@@ -104,23 +116,16 @@ bool platform_launch(Debugger *dbg, int argc, char **argv)
     dbg->pipe_shutdown = win32_pipe_shutdown;
 
     // Build named pipe path
+    static int launch_count = 0;
     std::string pipe_name = "\\\\.\\pipe\\dcmake-"
-                          + std::to_string(GetCurrentProcessId());
+                          + std::to_string(GetCurrentProcessId())
+                          + "-" + std::to_string(launch_count++);
 
-    // Build cmake command line (wide for CreateProcessW)
-    std::wstring cmdline = L"cmake --debugger --debugger-pipe=";
+    // Build cmake command line via cmd /c for shell variable expansion
+    std::wstring cmdline = L"cmd /c cmake --debugger --debugger-pipe=";
     cmdline += to_wide(pipe_name.c_str());
-    for (int i = 1; i < argc; i++) {
-        cmdline += L' ';
-        std::wstring arg = to_wide(argv[i]);
-        if (arg.find(L' ') != std::wstring::npos) {
-            cmdline += L'"';
-            cmdline += arg;
-            cmdline += L'"';
-        } else {
-            cmdline += arg;
-        }
-    }
+    cmdline += L' ';
+    cmdline += to_wide(args);
 
     // Launch cmake subprocess
     STARTUPINFOW si = {};
@@ -285,7 +290,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
     Debugger dbg = {};
-    dcmake_init(&dbg, wargc, argv_ptrs.data());
+    std::string initial_args = platform_quote_argv(wargc, argv_ptrs.data());
+    snprintf(dbg.cmdline, sizeof(dbg.cmdline), "%s", initial_args.c_str());
+    dcmake_init(&dbg);
 
     bool done = false;
     while (!done && !dbg.want_quit) {

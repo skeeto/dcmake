@@ -55,7 +55,40 @@ static void posix_pipe_shutdown(void *ctx)
     }
 }
 
-bool platform_launch(Debugger *dbg, int argc, char **argv)
+// POSIX shell-quote: wrap in single quotes, escape embedded single quotes.
+std::string platform_quote_argv(int argc, char **argv)
+{
+    std::string result;
+    for (int i = 1; i < argc; i++) {
+        if (i > 1) result += ' ';
+        const char *arg = argv[i];
+        // Check if quoting is needed
+        bool clean = true;
+        for (const char *c = arg; *c; c++) {
+            if (!isalnum(*c) && *c != '/' && *c != '.' && *c != '-' &&
+                *c != '_' && *c != '=' && *c != ':' && *c != '$') {
+                clean = false;
+                break;
+            }
+        }
+        if (clean && *arg) {
+            result += arg;
+        } else {
+            result += '\'';
+            for (const char *c = arg; *c; c++) {
+                if (*c == '\'') {
+                    result += "'\\''";
+                } else {
+                    result += *c;
+                }
+            }
+            result += '\'';
+        }
+    }
+    return result;
+}
+
+bool platform_launch(Debugger *dbg, const char *args)
 {
     auto *p = new PosixPlatform;
     dbg->platform = p;
@@ -64,24 +97,21 @@ bool platform_launch(Debugger *dbg, int argc, char **argv)
     dbg->pipe_shutdown = posix_pipe_shutdown;
 
     // Build pipe path
-    p->pipe_path = "/tmp/dcmake-" + std::to_string(getpid()) + ".sock";
+    static int launch_count = 0;
+    p->pipe_path = "/tmp/dcmake-" + std::to_string(getpid())
+                  + "-" + std::to_string(launch_count++) + ".sock";
     unlink(p->pipe_path.c_str());
 
-    // Build cmake argument list
-    std::vector<const char *> args;
-    args.push_back("cmake");
-    args.push_back("--debugger");
-    std::string pipe_arg = "--debugger-pipe=" + p->pipe_path;
-    args.push_back(pipe_arg.c_str());
-    for (int i = 1; i < argc; i++) {
-        args.push_back(argv[i]);
-    }
-    args.push_back(nullptr);
+    // Build shell command
+    std::string cmd = "cmake --debugger --debugger-pipe=";
+    cmd += p->pipe_path;
+    cmd += ' ';
+    cmd += args;
 
-    // Fork cmake subprocess
+    // Fork cmake subprocess via sh -c
     pid_t pid = fork();
     if (pid == 0) {
-        execvp("cmake", const_cast<char *const *>(args.data()));
+        execlp("sh", "sh", "-c", cmd.c_str(), nullptr);
         _exit(127);
     }
     if (pid < 0) {
@@ -185,7 +215,9 @@ int main(int argc, char **argv)
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
     Debugger dbg = {};
-    dcmake_init(&dbg, argc, argv);
+    std::string initial_args = platform_quote_argv(argc, argv);
+    snprintf(dbg.cmdline, sizeof(dbg.cmdline), "%s", initial_args.c_str());
+    dcmake_init(&dbg);
 
     while (!glfwWindowShouldClose(window) && !dbg.want_quit) {
         glfwPollEvents();
