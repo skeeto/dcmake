@@ -6,6 +6,7 @@
 
 #include <errno.h>
 #include <signal.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/wait.h>
@@ -220,6 +221,22 @@ int main(int argc, char **argv)
     std::string initial_args = platform_quote_argv(argc, argv);
     snprintf(dbg.cmdline, sizeof(dbg.cmdline), "%s", initial_args.c_str());
     dcmake_init(&dbg);
+
+    // Set up config directory for imgui.ini
+    {
+        const char *xdg = getenv("XDG_CONFIG_HOME");
+        if (xdg && *xdg) {
+            dbg.ini_path = xdg;
+        } else {
+            const char *home = getenv("HOME");
+            dbg.ini_path = home ? home : ".";
+            dbg.ini_path += "/.config";
+        }
+        dbg.ini_path += "/dcmake";
+        mkdir(dbg.ini_path.c_str(), 0755);
+        dbg.ini_path += "/imgui.ini";
+        io.IniFilename = dbg.ini_path.c_str();
+    }
 
     while (!glfwWindowShouldClose(window) && !dbg.want_quit) {
         glfwPollEvents();

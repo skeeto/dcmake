@@ -901,10 +901,9 @@ static void render_ui(Debugger *dbg)
                  ImGuiWindowFlags_NoBackground);
     ImGuiID dockspace_id = ImGui::GetID("DockSpace");
 
-    // Set up default layout on first run
-    if (dbg->first_layout) {
+    // Set up default layout only if no saved layout exists
+    if (dbg->first_layout && !ImGui::DockBuilderGetNode(dockspace_id)) {
         dbg->first_layout = false;
-        ImGui::DockBuilderRemoveNode(dockspace_id);
         ImGui::DockBuilderAddNode(dockspace_id,
                                   ImGuiDockNodeFlags_DockSpace);
         ImGui::DockBuilderSetNodeSize(dockspace_id, dock_size);

@@ -2,6 +2,7 @@
 #include "dcmake.h"
 
 #include <windows.h>
+#include <shlobj.h>
 #include <d3d11.h>
 
 #include <imgui.h>
@@ -300,6 +301,19 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
     std::string initial_args = platform_quote_argv(0, nullptr);
     snprintf(dbg.cmdline, sizeof(dbg.cmdline), "%s", initial_args.c_str());
     dcmake_init(&dbg);
+
+    // Set up config directory for imgui.ini
+    {
+        wchar_t appdata[MAX_PATH];
+        if (SUCCEEDED(SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, appdata))) {
+            std::wstring dir = appdata;
+            dir += L"\\dcmake";
+            CreateDirectoryW(dir.c_str(), nullptr);
+            dir += L"\\imgui.ini";
+            dbg.ini_path = to_utf8(dir.c_str());
+            io.IniFilename = dbg.ini_path.c_str();
+        }
+    }
 
     bool done = false;
     while (!done && !dbg.want_quit) {

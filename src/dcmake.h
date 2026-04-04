@@ -91,6 +91,7 @@ struct Debugger {
     std::vector<ExceptionFilter> exception_filters;
 
     // UI state
+    std::string ini_path;
     char cmdline[4096] = {};
     std::string status;
     bool want_quit = false;
