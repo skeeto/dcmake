@@ -21,12 +21,14 @@ All source files live under `src/`:
 - `src/dcmake.h` -- Debugger state struct, DapState enum, lifecycle prototypes
 - `src/dcmake.cpp` -- DAP protocol, state machine, ImGui UI (all shared logic)
 - `src/platform_glfw.cpp` -- macOS/Linux: main(), GLFW+OpenGL3 render loop
-- `src/platform_win32.cpp` -- Windows: WinMain(), Win32+DX11 (skeleton, subprocess not wired)
+- `src/platform_win32.cpp` -- Windows: WinMain(), Win32+DX11, named pipes + CreateProcess
 - `CMakeLists.txt` -- FetchContent for nlohmann/json, Dear ImGui, GLFW
 
-Platform files own the entry point and render loop. They call three functions
-from src/dcmake.cpp: `dcmake_init`, `dcmake_frame`, `dcmake_shutdown`. All
-debugger state lives in a single `Debugger` struct passed by pointer.
+Platform files own the entry point, render loop, pipe creation, and subprocess
+management. They implement `platform_launch` and `platform_cleanup`, and fill
+in function pointers (`pipe_read`, `pipe_write`, `pipe_shutdown`) plus a
+`void *platform` context on the Debugger struct. The shared code in
+`src/dcmake.cpp` uses these for all I/O — it has no platform-specific includes.
 
 ## Dependencies
 
@@ -36,13 +38,16 @@ sources (GLFW+OpenGL3 on POSIX, Win32+DX11 on Windows).
 
 ## DAP pipe mechanism
 
-CMake is the socket server. On POSIX it creates a Unix domain socket at the
-path given by `--debugger-pipe=<path>`, binds, listens, and accepts one
-connection. We are the client: we `fork`/`exec` cmake, then retry `connect()`
-in a loop until cmake is listening (10ms intervals, up to ~5s).
+CMake is the pipe server. We are the client. Each platform implements this in
+`platform_launch`:
 
-On Windows, cmake uses named pipes (`CreateNamedPipe` / `ConnectNamedPipe`).
-The Win32 platform layer will need `CreateProcess` + `CreateFile` to connect.
+**POSIX** (`platform_glfw.cpp`): Unix domain socket at `/tmp/dcmake-<pid>.sock`.
+CMake binds/listens/accepts. We `fork`/`exec` cmake, then retry `connect()`
+in a loop (10ms intervals, up to ~5s). I/O via `read()`/`write()` on the fd.
+
+**Windows** (`platform_win32.cpp`): Named pipe at `\\.\pipe\dcmake-<pid>`.
+CMake calls `CreateNamedPipeA` + `ConnectNamedPipe`. We `CreateProcessA` cmake,
+then retry `CreateFileA` to open the pipe. I/O via synchronous `ReadFile`/`WriteFile`.
 
 ## CMake debugger gotchas
 
@@ -80,8 +85,7 @@ framing. Complete JSON message strings are pushed into `Debugger::inbox`
 
 ## Not yet implemented
 
-- Windows subprocess launch (platform_win32.cpp is a compilable skeleton)
-- Linux platform (should share platform_glfw.cpp with minimal changes)
+- Linux platform (should share platform_glfw.cpp as-is)
 - Variable inspection (scopes, variables requests)
 - Breakpoints (setBreakpoints request)
 - Step out

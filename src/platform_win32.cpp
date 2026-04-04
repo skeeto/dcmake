@@ -11,12 +11,145 @@
 
 #include <cstdio>
 #include <cstdlib>
-#include <vector>
 #include <string>
+#include <vector>
 
 // Forward declare message handler from imgui_impl_win32.cpp
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(
     HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+// --- Platform pipe implementation ---
+
+struct Win32Platform {
+    HANDLE pipe = INVALID_HANDLE_VALUE;
+    HANDLE cmake_process = INVALID_HANDLE_VALUE;
+};
+
+static int win32_pipe_read(void *ctx, char *buf, int len)
+{
+    auto *p = (Win32Platform *)ctx;
+    DWORD n = 0;
+    if (!ReadFile(p->pipe, buf, len, &n, nullptr)) return 0;
+    return (int)n;
+}
+
+static bool win32_pipe_write(void *ctx, const char *buf, int len)
+{
+    auto *p = (Win32Platform *)ctx;
+    DWORD n = 0;
+    return WriteFile(p->pipe, buf, len, &n, nullptr) && (int)n == len;
+}
+
+static void win32_pipe_shutdown(void *ctx)
+{
+    auto *p = (Win32Platform *)ctx;
+    if (p->pipe != INVALID_HANDLE_VALUE) {
+        // Closing the handle unblocks a pending ReadFile in the reader thread
+        CloseHandle(p->pipe);
+        p->pipe = INVALID_HANDLE_VALUE;
+    }
+}
+
+// Convert wide string to UTF-8
+static std::string to_utf8(const wchar_t *wide)
+{
+    if (!wide || !*wide) return {};
+    int len = WideCharToMultiByte(CP_UTF8, 0, wide, -1,
+                                  nullptr, 0, nullptr, nullptr);
+    std::string out(len - 1, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, wide, -1,
+                        out.data(), len, nullptr, nullptr);
+    return out;
+}
+
+bool platform_launch(Debugger *dbg, int argc, char **argv)
+{
+    auto *p = new Win32Platform;
+    dbg->platform = p;
+    dbg->pipe_read = win32_pipe_read;
+    dbg->pipe_write = win32_pipe_write;
+    dbg->pipe_shutdown = win32_pipe_shutdown;
+
+    // Build named pipe path
+    std::string pipe_name = "\\\\.\\pipe\\dcmake-"
+                          + std::to_string(GetCurrentProcessId());
+
+    // Build cmake command line
+    std::string cmdline = "cmake --debugger --debugger-pipe=" + pipe_name;
+    for (int i = 1; i < argc; i++) {
+        cmdline += ' ';
+        // Quote arguments that contain spaces
+        std::string arg = argv[i];
+        if (arg.find(' ') != std::string::npos) {
+            cmdline += '"';
+            cmdline += arg;
+            cmdline += '"';
+        } else {
+            cmdline += arg;
+        }
+    }
+
+    // Launch cmake subprocess
+    STARTUPINFOA si = {};
+    si.cb = sizeof(si);
+    PROCESS_INFORMATION pi = {};
+    if (!CreateProcessA(nullptr, cmdline.data(), nullptr, nullptr,
+                        FALSE, 0, nullptr, nullptr, &si, &pi)) {
+        dbg->status = "Failed to start cmake";
+        return false;
+    }
+    CloseHandle(pi.hThread);
+    p->cmake_process = pi.hProcess;
+
+    // Connect to cmake's named pipe (retry loop)
+    // CMake creates the pipe with CreateNamedPipe then calls ConnectNamedPipe.
+    // We open it with CreateFile once it exists.
+    bool connected = false;
+    for (int i = 0; i < 500; i++) {
+        p->pipe = CreateFileA(pipe_name.c_str(),
+                              GENERIC_READ | GENERIC_WRITE,
+                              0, nullptr, OPEN_EXISTING, 0, nullptr);
+        if (p->pipe != INVALID_HANDLE_VALUE) {
+            connected = true;
+            break;
+        }
+        // Check if cmake exited prematurely
+        if (WaitForSingleObject(p->cmake_process, 0) == WAIT_OBJECT_0) {
+            break;
+        }
+        Sleep(10);
+    }
+
+    if (!connected) {
+        dbg->status = "Failed to connect to cmake debugger";
+        return false;
+    }
+
+    return true;
+}
+
+void platform_cleanup(Debugger *dbg)
+{
+    auto *p = (Win32Platform *)dbg->platform;
+    if (!p) return;
+
+    if (p->pipe != INVALID_HANDLE_VALUE) {
+        CloseHandle(p->pipe);
+        p->pipe = INVALID_HANDLE_VALUE;
+    }
+
+    if (p->cmake_process != INVALID_HANDLE_VALUE) {
+        TerminateProcess(p->cmake_process, 1);
+        WaitForSingleObject(p->cmake_process, 3000);
+        CloseHandle(p->cmake_process);
+        p->cmake_process = INVALID_HANDLE_VALUE;
+    }
+
+    delete p;
+    dbg->platform = nullptr;
+}
+
+// --- Win32 + DX11 entry point ---
 
 static ID3D11Device *g_device = nullptr;
 static ID3D11DeviceContext *g_context = nullptr;
@@ -52,16 +185,6 @@ static LRESULT CALLBACK wnd_proc(HWND hWnd, UINT msg,
         return 0;
     }
     return DefWindowProcW(hWnd, msg, wParam, lParam);
-}
-
-// Convert wide string to UTF-8
-static std::string to_utf8(const wchar_t *wide)
-{
-    if (!wide || !*wide) return {};
-    int len = WideCharToMultiByte(CP_UTF8, 0, wide, -1, nullptr, 0, nullptr, nullptr);
-    std::string out(len - 1, '\0');
-    WideCharToMultiByte(CP_UTF8, 0, wide, -1, out.data(), len, nullptr, nullptr);
-    return out;
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
@@ -123,10 +246,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
     Debugger dbg = {};
-    // TODO: dcmake_init needs Windows pipe support (named pipes + CreateProcess)
-    // For now this is a skeleton; the POSIX init won't compile here.
-    dbg.state = DapState::TERMINATED;
-    dbg.status = "Windows platform not yet implemented";
+    dcmake_init(&dbg, wargc, argv_ptrs.data());
 
     bool done = false;
     while (!done && !dbg.want_quit) {

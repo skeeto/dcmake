@@ -3,14 +3,6 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
-#include <sstream>
-
-#include <errno.h>
-#include <signal.h>
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <sys/wait.h>
-#include <unistd.h>
 
 #include <imgui.h>
 #include <nlohmann/json.hpp>
@@ -25,10 +17,9 @@ static void dap_send(Debugger *dbg, const json &msg)
     char header[64];
     int hlen = snprintf(header, sizeof(header),
                         "Content-Length: %zu\r\n\r\n", body.size());
-    // Write header then body (main thread only, no mutex needed)
-    if (dbg->sock_fd >= 0) {
-        write(dbg->sock_fd, header, hlen);
-        write(dbg->sock_fd, body.data(), body.size());
+    if (dbg->pipe_write) {
+        dbg->pipe_write(dbg->platform, header, hlen);
+        dbg->pipe_write(dbg->platform, body.data(), (int)body.size());
     }
 }
 
@@ -44,7 +35,7 @@ static void dap_request(Debugger *dbg, const char *command,
     dap_send(dbg, msg);
 }
 
-// Reader thread: reads from socket, parses Content-Length framing,
+// Reader thread: reads from pipe, parses Content-Length framing,
 // pushes complete JSON strings into dbg->inbox.
 static void reader_thread_func(Debugger *dbg)
 {
@@ -52,7 +43,7 @@ static void reader_thread_func(Debugger *dbg)
     char tmp[4096];
 
     while (dbg->reader_running.load()) {
-        ssize_t n = read(dbg->sock_fd, tmp, sizeof(tmp));
+        int n = dbg->pipe_read(dbg->platform, tmp, sizeof(tmp));
         if (n <= 0) {
             dbg->reader_running.store(false);
             break;
@@ -61,16 +52,13 @@ static void reader_thread_func(Debugger *dbg)
 
         // Process as many complete messages as possible
         for (;;) {
-            // Need at least the header separator
             auto sep = buf.find("\r\n\r\n");
             if (sep == std::string::npos) break;
 
-            // Parse Content-Length from headers
             int content_length = 0;
             std::string_view headers(buf.data(), sep);
             auto cl = headers.find("Content-Length:");
             if (cl == std::string_view::npos) {
-                // Malformed -- skip this header block
                 buf.erase(0, sep + 4);
                 continue;
             }
@@ -78,7 +66,7 @@ static void reader_thread_func(Debugger *dbg)
 
             size_t msg_start = sep + 4;
             size_t msg_end = msg_start + content_length;
-            if (buf.size() < msg_end) break; // need more data
+            if (buf.size() < msg_end) break;
 
             std::string message = buf.substr(msg_start, content_length);
             buf.erase(0, msg_end);
@@ -97,7 +85,6 @@ static SourceFile *get_source(Debugger *dbg, const std::string &path)
         if (sf.path == path) return &sf;
     }
 
-    // Load from disk
     std::ifstream f(path);
     if (!f.is_open()) return nullptr;
 
@@ -140,7 +127,6 @@ static void handle_response(Debugger *dbg, const json &msg)
             sf.line = frame.value("line", 0);
             dbg->stack.push_back(std::move(sf));
         }
-        // Update current source view from top frame
         if (!dbg->stack.empty()) {
             auto &top = dbg->stack[0];
             if (!top.source_path.empty()) {
@@ -176,7 +162,6 @@ static void handle_event(Debugger *dbg, const json &msg)
         std::string reason = body.value("reason", "");
         dbg->status = "Stopped (" + reason + ")";
 
-        // Request stack trace to know where we are
         dap_request(dbg, "stackTrace", {{"threadId", dbg->thread_id}});
     } else if (event == "terminated") {
         dbg->state = DapState::TERMINATED;
@@ -218,7 +203,7 @@ static void process_messages(Debugger *dbg)
         }
     }
 
-    // Check if reader thread died (socket closed)
+    // Detect dead reader thread (pipe closed)
     if (!dbg->reader_running.load() &&
         dbg->state != DapState::IDLE &&
         dbg->state != DapState::TERMINATED) {
@@ -287,7 +272,6 @@ static void render_ui(Debugger *dbg)
         int line_count = (int)dbg->current_source->lines.size();
         float line_height = ImGui::GetTextLineHeightWithSpacing();
 
-        // Digits needed for line numbers
         int gutter_digits = 1;
         for (int n = line_count; n >= 10; n /= 10) gutter_digits++;
 
@@ -308,11 +292,9 @@ static void render_ui(Debugger *dbg)
                         IM_COL32(80, 80, 30, 255));
                 }
 
-                // Line number gutter
                 ImGui::TextDisabled("%*d", gutter_digits, line_num);
                 ImGui::SameLine();
 
-                // Arrow marker
                 if (is_current) {
                     ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.2f, 1.0f), "->");
                 } else {
@@ -320,12 +302,10 @@ static void render_ui(Debugger *dbg)
                 }
                 ImGui::SameLine();
 
-                // Source text
                 ImGui::TextUnformatted(dbg->current_source->lines[i].c_str());
             }
         }
 
-        // Auto-scroll to current line
         if (dbg->scroll_to_line && dbg->current_line > 0) {
             float target_y = (dbg->current_line - 1) * line_height;
             float window_h = ImGui::GetWindowHeight();
@@ -366,66 +346,7 @@ void dcmake_init(Debugger *dbg, int argc, char **argv)
     dbg->state = DapState::CONNECTING;
     dbg->status = "Connecting...";
 
-    // Build pipe path
-    dbg->pipe_path = "/tmp/dcmake-" + std::to_string(getpid()) + ".sock";
-    unlink(dbg->pipe_path.c_str());
-
-    // Build cmake argument list
-    std::vector<const char *> args;
-    args.push_back("cmake");
-    args.push_back("--debugger");
-    std::string pipe_arg = "--debugger-pipe=" + dbg->pipe_path;
-    args.push_back(pipe_arg.c_str());
-    for (int i = 1; i < argc; i++) {
-        args.push_back(argv[i]);
-    }
-    args.push_back(nullptr);
-
-    // Fork cmake subprocess
-    pid_t pid = fork();
-    if (pid == 0) {
-        // Child
-        execvp("cmake", const_cast<char *const *>(args.data()));
-        _exit(127);
-    }
-    if (pid < 0) {
-        dbg->status = "Failed to fork cmake";
-        dbg->state = DapState::TERMINATED;
-        return;
-    }
-    dbg->cmake_pid = pid;
-
-    // Connect to cmake's unix domain socket (retry loop)
-    dbg->sock_fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (dbg->sock_fd < 0) {
-        dbg->status = "Failed to create socket";
-        dbg->state = DapState::TERMINATED;
-        return;
-    }
-
-    sockaddr_un addr = {};
-    addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, dbg->pipe_path.c_str(), sizeof(addr.sun_path) - 1);
-
-    bool connected = false;
-    for (int i = 0; i < 500; i++) {
-        if (connect(dbg->sock_fd, (sockaddr *)&addr, sizeof(addr)) == 0) {
-            connected = true;
-            break;
-        }
-        // Check if cmake exited prematurely
-        int wstatus;
-        if (waitpid(dbg->cmake_pid, &wstatus, WNOHANG) > 0) {
-            dbg->cmake_pid = -1;
-            break;
-        }
-        usleep(10000); // 10ms
-    }
-
-    if (!connected) {
-        close(dbg->sock_fd);
-        dbg->sock_fd = -1;
-        dbg->status = "Failed to connect to cmake debugger";
+    if (!platform_launch(dbg, argc, argv)) {
         dbg->state = DapState::TERMINATED;
         return;
     }
@@ -434,7 +355,7 @@ void dcmake_init(Debugger *dbg, int argc, char **argv)
     dbg->reader_running.store(true);
     dbg->reader_thread = std::thread(reader_thread_func, dbg);
 
-    // Send initialize request
+    // Begin DAP handshake
     dbg->state = DapState::INITIALIZING;
     dbg->status = "Initializing...";
     dap_request(dbg, "initialize", {
@@ -450,45 +371,24 @@ void dcmake_init(Debugger *dbg, int argc, char **argv)
 void dcmake_frame(Debugger *dbg)
 {
     process_messages(dbg);
-
-    // Check if cmake exited (non-blocking)
-    if (dbg->cmake_pid > 0) {
-        int wstatus;
-        if (waitpid(dbg->cmake_pid, &wstatus, WNOHANG) > 0) {
-            dbg->cmake_pid = -1;
-        }
-    }
-
     render_ui(dbg);
 }
 
 void dcmake_shutdown(Debugger *dbg)
 {
     // Send disconnect if still connected
-    if (dbg->sock_fd >= 0 && dbg->state != DapState::TERMINATED) {
+    if (dbg->pipe_write && dbg->state != DapState::TERMINATED) {
         dap_request(dbg, "disconnect");
     }
 
-    // Stop reader thread
+    // Unblock reader thread and join
     dbg->reader_running.store(false);
-    if (dbg->sock_fd >= 0) {
-        shutdown(dbg->sock_fd, SHUT_RDWR);
-        close(dbg->sock_fd);
-        dbg->sock_fd = -1;
+    if (dbg->pipe_shutdown) {
+        dbg->pipe_shutdown(dbg->platform);
     }
     if (dbg->reader_thread.joinable()) {
         dbg->reader_thread.join();
     }
 
-    // Clean up socket file
-    if (!dbg->pipe_path.empty()) {
-        unlink(dbg->pipe_path.c_str());
-    }
-
-    // Kill cmake if still running
-    if (dbg->cmake_pid > 0) {
-        kill(dbg->cmake_pid, SIGTERM);
-        waitpid(dbg->cmake_pid, nullptr, 0);
-        dbg->cmake_pid = -1;
-    }
+    platform_cleanup(dbg);
 }
