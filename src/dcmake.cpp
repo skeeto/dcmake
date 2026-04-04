@@ -1,5 +1,6 @@
 #include "dcmake.hpp"
 
+#include <charconv>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -56,17 +57,24 @@ static void reader_thread_func(Debugger *dbg)
             auto sep = buf.find("\r\n\r\n");
             if (sep == std::string::npos) break;
 
-            int content_length = 0;
             std::string_view headers(buf.data(), sep);
             auto cl = headers.find("Content-Length:");
             if (cl == std::string_view::npos) {
                 buf.erase(0, sep + 4);
                 continue;
             }
-            content_length = std::atoi(buf.data() + cl + 15);
+            int content_length = 0;
+            const char *first = buf.data() + cl + 15;
+            const char *last = buf.data() + sep;
+            while (first < last && *first == ' ') first++;
+            auto [ptr, ec] = std::from_chars(first, last, content_length);
+            if (ec != std::errc{} || content_length < 0) {
+                buf.erase(0, sep + 4);
+                continue;
+            }
 
             size_t msg_start = sep + 4;
-            size_t msg_end = msg_start + content_length;
+            size_t msg_end = msg_start + (size_t)content_length;
             if (buf.size() < msg_end) break;
 
             std::string message = buf.substr(msg_start, content_length);
