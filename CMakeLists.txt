@@ -67,6 +67,6 @@ else()
   )
   target_link_libraries(imgui PUBLIC d3d11 dxgi d3dcompiler dwmapi)
 
-  add_executable(dcmake WIN32 src/dcmake.cpp src/platform_win32.cpp)
+  add_executable(dcmake src/dcmake.cpp src/platform_win32.cpp)
   target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json)
 endif()

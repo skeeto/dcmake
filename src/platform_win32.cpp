@@ -250,8 +250,10 @@ static LRESULT CALLBACK wnd_proc(HWND hWnd, UINT msg,
     return DefWindowProcW(hWnd, msg, wParam, lParam);
 }
 
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
+int main()
 {
+    HINSTANCE hInstance = GetModuleHandle(nullptr);
+    int nCmdShow = SW_SHOWDEFAULT;
     // Register window class
     WNDCLASSEXW wc = {};
     wc.cbSize = sizeof(wc);
