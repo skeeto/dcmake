@@ -29,6 +29,35 @@ struct SourceFile {
     std::vector<std::string> lines;
 };
 
+struct DapVariable {
+    std::string name;
+    std::string value;
+    std::string type;
+    int64_t variables_ref = 0;
+    std::vector<DapVariable> children;
+    bool fetched = false;
+};
+
+struct DapScope {
+    std::string name;
+    int64_t variables_ref = 0;
+    std::vector<DapVariable> variables;
+    bool fetched = false;
+};
+
+struct LineBreakpoint {
+    std::string path;
+    int line;
+    int id = 0;
+    bool verified = false;
+};
+
+struct ExceptionFilter {
+    std::string filter;
+    std::string label;
+    bool enabled;
+};
+
 struct Debugger {
     DapState state = DapState::IDLE;
     int thread_id = 0;
@@ -51,9 +80,25 @@ struct Debugger {
     std::thread reader_thread;
     std::atomic<bool> reader_running{false};
 
+    // Variable/scope data (refreshed each time we stop)
+    std::vector<DapScope> scopes;
+
+    // Breakpoints
+    std::vector<LineBreakpoint> breakpoints;
+    std::vector<ExceptionFilter> exception_filters;
+
+    // UI state
     char cmdline[4096] = {};
     std::string status;
     bool want_quit = false;
+    bool first_layout = true;
+    bool show_source = true;
+    bool show_stack = true;
+    bool show_locals = true;
+    bool show_cache = false;
+    bool show_targets = false;
+    bool show_tests = false;
+    bool show_breakpoints = true;
 };
 
 // Platform layer must implement these.
