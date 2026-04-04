@@ -16,16 +16,16 @@ All arguments after `dcmake` are forwarded to cmake as-is.
 
 ## Architecture
 
-Five source files, single header:
+All source files live under `src/`:
 
-- `dcmake.h` -- Debugger state struct, DapState enum, lifecycle prototypes
-- `dcmake.cpp` -- DAP protocol, state machine, ImGui UI (all shared logic)
-- `platform_glfw.cpp` -- macOS/Linux: main(), GLFW+OpenGL3 render loop
-- `platform_win32.cpp` -- Windows: WinMain(), Win32+DX11 (skeleton, subprocess not wired)
+- `src/dcmake.h` -- Debugger state struct, DapState enum, lifecycle prototypes
+- `src/dcmake.cpp` -- DAP protocol, state machine, ImGui UI (all shared logic)
+- `src/platform_glfw.cpp` -- macOS/Linux: main(), GLFW+OpenGL3 render loop
+- `src/platform_win32.cpp` -- Windows: WinMain(), Win32+DX11 (skeleton, subprocess not wired)
 - `CMakeLists.txt` -- FetchContent for nlohmann/json, Dear ImGui, GLFW
 
 Platform files own the entry point and render loop. They call three functions
-from dcmake.cpp: `dcmake_init`, `dcmake_frame`, `dcmake_shutdown`. All
+from src/dcmake.cpp: `dcmake_init`, `dcmake_frame`, `dcmake_shutdown`. All
 debugger state lives in a single `Debugger` struct passed by pointer.
 
 ## Dependencies
@@ -51,7 +51,7 @@ hit, a step request condition is active, or PauseRequest is set. To get an
 initial stop, we send a `pause` request *before* `configurationDone`. CMake's
 session thread processes requests in order: pause sets the atomic flag, then
 configurationDone unblocks cmake execution, and cmake immediately hits the
-pause flag on the very first function call. See `dcmake.cpp` handle_event
+pause flag on the very first function call. See `src/dcmake.cpp` handle_event
 for "initialized" and `cmake-4.3.1/Source/cmDebuggerAdapter.cxx:386-421`.
 
 **CMake has a single thread** called "CMake script". The thread ID comes from

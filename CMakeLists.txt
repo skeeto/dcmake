@@ -52,7 +52,7 @@ if(NOT WIN32)
   )
   target_link_libraries(imgui PUBLIC glfw)
 
-  add_executable(dcmake dcmake.cpp platform_glfw.cpp)
+  add_executable(dcmake src/dcmake.cpp src/platform_glfw.cpp)
   target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json)
 
   if(APPLE)
@@ -67,6 +67,6 @@ else()
   )
   target_link_libraries(imgui PUBLIC d3d11 dxgi)
 
-  add_executable(dcmake WIN32 dcmake.cpp platform_win32.cpp)
+  add_executable(dcmake WIN32 src/dcmake.cpp src/platform_win32.cpp)
   target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json)
 endif()
