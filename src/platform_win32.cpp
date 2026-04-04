@@ -83,6 +83,16 @@ static std::string to_utf8(const wchar_t *wide)
     return out;
 }
 
+// Convert UTF-8 string to wide
+static std::wstring to_wide(const char *utf8)
+{
+    if (!utf8 || !*utf8) return {};
+    int len = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, nullptr, 0);
+    std::wstring out(len - 1, L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, utf8, -1, out.data(), len);
+    return out;
+}
+
 bool platform_launch(Debugger *dbg, int argc, char **argv)
 {
     auto *p = new Win32Platform;
@@ -97,26 +107,26 @@ bool platform_launch(Debugger *dbg, int argc, char **argv)
     std::string pipe_name = "\\\\.\\pipe\\dcmake-"
                           + std::to_string(GetCurrentProcessId());
 
-    // Build cmake command line
-    std::string cmdline = "cmake --debugger --debugger-pipe=" + pipe_name;
+    // Build cmake command line (wide for CreateProcessW)
+    std::wstring cmdline = L"cmake --debugger --debugger-pipe=";
+    cmdline += to_wide(pipe_name.c_str());
     for (int i = 1; i < argc; i++) {
-        cmdline += ' ';
-        // Quote arguments that contain spaces
-        std::string arg = argv[i];
-        if (arg.find(' ') != std::string::npos) {
-            cmdline += '"';
+        cmdline += L' ';
+        std::wstring arg = to_wide(argv[i]);
+        if (arg.find(L' ') != std::wstring::npos) {
+            cmdline += L'"';
             cmdline += arg;
-            cmdline += '"';
+            cmdline += L'"';
         } else {
             cmdline += arg;
         }
     }
 
     // Launch cmake subprocess
-    STARTUPINFOA si = {};
+    STARTUPINFOW si = {};
     si.cb = sizeof(si);
     PROCESS_INFORMATION pi = {};
-    if (!CreateProcessA(nullptr, cmdline.data(), nullptr, nullptr,
+    if (!CreateProcessW(nullptr, cmdline.data(), nullptr, nullptr,
                         FALSE, 0, nullptr, nullptr, &si, &pi)) {
         dbg->status = "Failed to start cmake";
         return false;
