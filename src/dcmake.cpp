@@ -554,8 +554,10 @@ static void render_toolbar(Debugger *dbg)
 
 static void render_source(Debugger *dbg)
 {
-    if (!dbg->show_source) return;
-    ImGui::Begin("Source", &dbg->show_source);
+    if (!ImGui::Begin("Source", &dbg->show_source)) {
+        ImGui::End();
+        return;
+    }
 
     if (dbg->current_source && !dbg->current_source->lines.empty()) {
         int line_count = (int)dbg->current_source->lines.size();
@@ -640,8 +642,10 @@ static void render_source(Debugger *dbg)
 
 static void render_stack(Debugger *dbg)
 {
-    if (!dbg->show_stack) return;
-    ImGui::Begin("Call Stack", &dbg->show_stack);
+    if (!ImGui::Begin("Call Stack", &dbg->show_stack)) {
+        ImGui::End();
+        return;
+    }
 
     for (int i = 0; i < (int)dbg->stack.size(); i++) {
         auto &f = dbg->stack[i];
@@ -704,8 +708,10 @@ static DapVariable *find_scope_child(Debugger *dbg, const char *name)
 
 static void render_locals(Debugger *dbg)
 {
-    if (!dbg->show_locals) return;
-    ImGui::Begin("Locals", &dbg->show_locals);
+    if (!ImGui::Begin("Locals", &dbg->show_locals)) {
+        ImGui::End();
+        return;
+    }
 
     if (dbg->state == DapState::STOPPED) {
         DapVariable *locals = find_scope_child(dbg, "Locals");
@@ -732,8 +738,10 @@ static void render_locals(Debugger *dbg)
 
 static void render_cache(Debugger *dbg)
 {
-    if (!dbg->show_cache) return;
-    ImGui::Begin("Cache Variables", &dbg->show_cache);
+    if (!ImGui::Begin("Cache Variables", &dbg->show_cache)) {
+        ImGui::End();
+        return;
+    }
 
     if (dbg->state == DapState::STOPPED) {
         DapVariable *cache = find_scope_child(dbg, "CacheVariables");
@@ -755,8 +763,10 @@ static void render_cache(Debugger *dbg)
 
 static void render_targets(Debugger *dbg)
 {
-    if (!dbg->show_targets) return;
-    ImGui::Begin("Targets", &dbg->show_targets);
+    if (!ImGui::Begin("Targets", &dbg->show_targets)) {
+        ImGui::End();
+        return;
+    }
 
     if (dbg->state == DapState::STOPPED) {
         DapVariable *targets = find_scope_child(dbg, "Targets");
@@ -778,8 +788,10 @@ static void render_targets(Debugger *dbg)
 
 static void render_tests(Debugger *dbg)
 {
-    if (!dbg->show_tests) return;
-    ImGui::Begin("Tests", &dbg->show_tests);
+    if (!ImGui::Begin("Tests", &dbg->show_tests)) {
+        ImGui::End();
+        return;
+    }
 
     if (dbg->state == DapState::STOPPED) {
         DapVariable *tests = find_scope_child(dbg, "Tests");
@@ -801,8 +813,10 @@ static void render_tests(Debugger *dbg)
 
 static void render_breakpoints_panel(Debugger *dbg)
 {
-    if (!dbg->show_breakpoints) return;
-    ImGui::Begin("Breakpoints", &dbg->show_breakpoints);
+    if (!ImGui::Begin("Breakpoints", &dbg->show_breakpoints)) {
+        ImGui::End();
+        return;
+    }
 
     // Exception filters
     ImGui::TextDisabled("Exception Filters");
@@ -897,7 +911,6 @@ static void render_ui(Debugger *dbg)
                  ImGuiWindowFlags_NoCollapse |
                  ImGuiWindowFlags_NoBringToFrontOnFocus |
                  ImGuiWindowFlags_NoDocking |
-                 ImGuiWindowFlags_NoSavedSettings |
                  ImGuiWindowFlags_NoBackground);
     ImGuiID dockspace_id = ImGui::GetID("DockSpace");
 

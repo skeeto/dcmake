@@ -99,9 +99,9 @@ struct Debugger {
     bool show_source = true;
     bool show_stack = true;
     bool show_locals = true;
-    bool show_cache = false;
-    bool show_targets = false;
-    bool show_tests = false;
+    bool show_cache = true;
+    bool show_targets = true;
+    bool show_tests = true;
     bool show_breakpoints = true;
 };
 
