@@ -23,28 +23,49 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(
 struct Win32Platform {
     HANDLE pipe = INVALID_HANDLE_VALUE;
     HANDLE cmake_process = INVALID_HANDLE_VALUE;
+    OVERLAPPED read_op = {};
+    OVERLAPPED write_op = {};
 };
+
+// Overlapped I/O: concurrent read and write on a single pipe handle.
+// Without FILE_FLAG_OVERLAPPED, synchronous ReadFile in the reader thread
+// locks the handle and WriteFile from the main thread deadlocks.
 
 static int win32_pipe_read(void *ctx, char *buf, int len)
 {
     auto *p = (Win32Platform *)ctx;
-    DWORD n = 0;
-    if (!ReadFile(p->pipe, buf, len, &n, nullptr)) return 0;
-    return (int)n;
+    p->read_op.Offset = p->read_op.OffsetHigh = 0;
+    ResetEvent(p->read_op.hEvent);
+    BOOL ok = ReadFile(p->pipe, buf, len, nullptr, &p->read_op);
+    DWORD err = GetLastError();
+    if (ok || err == ERROR_IO_PENDING) {
+        DWORD n = 0;
+        if (GetOverlappedResult(p->pipe, &p->read_op, &n, TRUE))
+            return (int)n;
+    }
+    return 0;
 }
 
 static bool win32_pipe_write(void *ctx, const char *buf, int len)
 {
     auto *p = (Win32Platform *)ctx;
-    DWORD n = 0;
-    return WriteFile(p->pipe, buf, len, &n, nullptr) && (int)n == len;
+    p->write_op.Offset = p->write_op.OffsetHigh = 0;
+    ResetEvent(p->write_op.hEvent);
+    BOOL ok = WriteFile(p->pipe, buf, len, nullptr, &p->write_op);
+    DWORD err = GetLastError();
+    if (ok || err == ERROR_IO_PENDING) {
+        DWORD n = 0;
+        if (GetOverlappedResult(p->pipe, &p->write_op, &n, TRUE))
+            return (int)n == len;
+    }
+    return false;
 }
 
 static void win32_pipe_shutdown(void *ctx)
 {
     auto *p = (Win32Platform *)ctx;
     if (p->pipe != INVALID_HANDLE_VALUE) {
-        // Closing the handle unblocks a pending ReadFile in the reader thread
+        CancelIo(p->pipe);
         CloseHandle(p->pipe);
         p->pipe = INVALID_HANDLE_VALUE;
     }
@@ -65,6 +86,8 @@ static std::string to_utf8(const wchar_t *wide)
 bool platform_launch(Debugger *dbg, int argc, char **argv)
 {
     auto *p = new Win32Platform;
+    p->read_op.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    p->write_op.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     dbg->platform = p;
     dbg->pipe_read = win32_pipe_read;
     dbg->pipe_write = win32_pipe_write;
@@ -108,7 +131,8 @@ bool platform_launch(Debugger *dbg, int argc, char **argv)
     for (int i = 0; i < 500; i++) {
         p->pipe = CreateFileA(pipe_name.c_str(),
                               GENERIC_READ | GENERIC_WRITE,
-                              0, nullptr, OPEN_EXISTING, 0, nullptr);
+                              0, nullptr, OPEN_EXISTING,
+                              FILE_FLAG_OVERLAPPED, nullptr);
         if (p->pipe != INVALID_HANDLE_VALUE) {
             connected = true;
             break;
@@ -137,6 +161,8 @@ void platform_cleanup(Debugger *dbg)
         CloseHandle(p->pipe);
         p->pipe = INVALID_HANDLE_VALUE;
     }
+    if (p->read_op.hEvent) CloseHandle(p->read_op.hEvent);
+    if (p->write_op.hEvent) CloseHandle(p->write_op.hEvent);
 
     if (p->cmake_process != INVALID_HANDLE_VALUE) {
         TerminateProcess(p->cmake_process, 1);
@@ -193,13 +219,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
     int wargc;
     LPWSTR *wargv = CommandLineToArgvW(GetCommandLineW(), &wargc);
     std::vector<std::string> arg_strings;
-    std::vector<char *> argv_ptrs;
     for (int i = 0; i < wargc; i++) {
         arg_strings.push_back(to_utf8(wargv[i]));
-        argv_ptrs.push_back(arg_strings.back().data());
+    }
+    LocalFree(wargv);
+    // Collect pointers after all strings are in place (no more reallocation)
+    std::vector<char *> argv_ptrs;
+    for (auto &s : arg_strings) {
+        argv_ptrs.push_back(s.data());
     }
     argv_ptrs.push_back(nullptr);
-    LocalFree(wargv);
 
     // Register window class
     WNDCLASSEXW wc = {};
