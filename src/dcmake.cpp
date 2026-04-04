@@ -159,12 +159,13 @@ static bool has_breakpoint(Debugger *dbg, const std::string &path, int line)
 static void fetch_variables(Debugger *dbg, int64_t ref)
 {
     if (ref > 0) {
+        int seq = dbg->next_seq;
+        dbg->pending_vars[seq] = ref;
         dap_request(dbg, "variables", {{"variablesReference", ref}});
     }
 }
 
 // Find a DapVariable by variablesReference in the scope/variable tree.
-// Returns nullptr if not found.
 static DapVariable *find_variable_by_ref(std::vector<DapVariable> &vars,
                                          int64_t ref)
 {
@@ -243,30 +244,16 @@ static void handle_response(Debugger *dbg, const json &msg)
             }
         }
     } else if (command == "variables") {
-        // Match response to the correct scope or variable by variablesReference.
-        // The request_seq in the response maps to our original request, but
-        // it's simpler to check which variablesReference the variables belong to
-        // by finding who we asked about.
-        if (msg.contains("body") && msg["body"].contains("variables")) {
-            auto &vars = msg["body"]["variables"];
+        // Look up which variablesReference this response is for via request_seq.
+        int req_seq = msg.value("request_seq", 0);
+        auto it = dbg->pending_vars.find(req_seq);
+        if (it != dbg->pending_vars.end() &&
+            msg.contains("body") && msg["body"].contains("variables")) {
+            int64_t ref = it->second;
+            dbg->pending_vars.erase(it);
 
-            // We need to figure out which variablesReference this response is for.
-            // Check the original request's arguments from the request_seq.
-            int64_t req_ref = 0;
-            // The DAP spec doesn't echo back the variablesReference in the response,
-            // so we track it via the request_seq → arguments mapping.
-            // For simplicity, scan scopes and variables for an unfetched ref.
-            // Actually, we can get it from the request args that DAP echoes... but
-            // CMake doesn't echo request args. So we use a different approach:
-            // store pending refs.
-
-            // Simple approach: for each variable in the response, store it.
-            // We find the parent by checking which scope/variable has a matching
-            // variablesReference that hasn't been populated yet.
-
-            // Parse the variables into a temp list
             std::vector<DapVariable> parsed;
-            for (auto &v : vars) {
+            for (auto &v : msg["body"]["variables"]) {
                 DapVariable dv;
                 dv.name = v.value("name", "");
                 dv.value = v.value("value", "");
@@ -275,52 +262,19 @@ static void handle_response(Debugger *dbg, const json &msg)
                 parsed.push_back(std::move(dv));
             }
 
-            // Try to match to a scope first
-            bool matched = false;
+            // Match to scope or nested variable by variablesReference
             for (auto &scope : dbg->scopes) {
-                if (!scope.fetched && scope.variables_ref > 0) {
+                if (scope.variables_ref == ref) {
                     scope.variables = std::move(parsed);
                     scope.fetched = true;
-                    matched = true;
                     break;
                 }
-            }
-
-            // If not a scope, find the variable in the tree
-            if (!matched) {
-                for (auto &scope : dbg->scopes) {
-                    DapVariable *parent = find_variable_by_ref(
-                        scope.variables, 0);
-                    // Actually search all variables for one that needs population
-                    for (auto &v : scope.variables) {
-                        if (v.variables_ref > 0 && !v.fetched &&
-                            v.children.empty()) {
-                            // This might be the one... but we can't be sure.
-                            // For now, find any unfetched expandable variable.
-                        }
-                        DapVariable *target = find_variable_by_ref(
-                            scope.variables, 0);
-                    }
-                }
-                // Fallback: find any unfetched variable with children expected
-                for (auto &scope : dbg->scopes) {
-                    auto find_unfetched = [&](auto &self,
-                                              std::vector<DapVariable> &vlist)
-                        -> DapVariable * {
-                        for (auto &v : vlist) {
-                            if (v.variables_ref > 0 && !v.fetched) return &v;
-                            auto *r = self(self, v.children);
-                            if (r) return r;
-                        }
-                        return nullptr;
-                    };
-                    DapVariable *target = find_unfetched(find_unfetched,
-                                                        scope.variables);
-                    if (target) {
-                        target->children = std::move(parsed);
-                        target->fetched = true;
-                        break;
-                    }
+                DapVariable *target = find_variable_by_ref(
+                    scope.variables, ref);
+                if (target) {
+                    target->children = std::move(parsed);
+                    target->fetched = true;
+                    break;
                 }
             }
         }
@@ -1007,6 +961,7 @@ void dcmake_start(Debugger *dbg)
     dbg->stack.clear();
     dbg->sources.clear();
     dbg->scopes.clear();
+    dbg->pending_vars.clear();
     dbg->current_source = nullptr;
     dbg->current_line = 0;
     dbg->scroll_to_line = false;

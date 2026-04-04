@@ -6,6 +6,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 enum struct DapState {
@@ -83,6 +84,7 @@ struct Debugger {
 
     // Variable/scope data (refreshed each time we stop)
     std::vector<DapScope> scopes;
+    std::unordered_map<int, int64_t> pending_vars;  // request seq → variablesReference
 
     // Breakpoints
     std::vector<LineBreakpoint> breakpoints;
