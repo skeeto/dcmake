@@ -1,8 +1,10 @@
-# dcmake: CMake debugger Front-end
+# dcmake: CMake debugger front-end
 
 An ImGui front end for [`cmake --debugger`][doc] communicating with
 [DAP][]. It allows stepping through and inspecting a CMake build. Supports
 at least Windows, macOS, and Linux.
+
+![](docs/dcmake.png)
 
 ## Build
 
