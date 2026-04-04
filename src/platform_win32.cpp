@@ -2,7 +2,6 @@
 #include "dcmake.h"
 
 #include <windows.h>
-#include <shellapi.h>
 #include <d3d11.h>
 
 #include <imgui.h>
@@ -10,9 +9,7 @@
 #include <imgui_impl_dx11.h>
 
 #include <cstdio>
-#include <cstdlib>
 #include <string>
-#include <vector>
 
 // Forward declare message handler from imgui_impl_win32.cpp
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(
@@ -93,16 +90,21 @@ static std::wstring to_wide(const char *utf8)
     return out;
 }
 
-// On Windows, just join argv[1..] with spaces. The original quoting from
-// CommandLineToArgvW round-trips through cmd /c fine.
-std::string platform_quote_argv(int argc, char **argv)
+// Skip past argv[0] in the raw command line to get the arguments portion.
+// If the first character is a double quote, skip to the closing double quote.
+// Otherwise skip to the first space or tab. Then trim leading whitespace.
+std::string platform_quote_argv(int, char **)
 {
-    std::string result;
-    for (int i = 1; i < argc; i++) {
-        if (i > 1) result += ' ';
-        result += argv[i];
+    const wchar_t *cmd = GetCommandLineW();
+    if (*cmd == L'"') {
+        cmd++;
+        while (*cmd && *cmd != L'"') cmd++;
+        if (*cmd) cmd++;
+    } else {
+        while (*cmd && *cmd != L' ' && *cmd != L'\t') cmd++;
     }
-    return result;
+    while (*cmd == L' ' || *cmd == L'\t') cmd++;
+    return to_utf8(cmd);
 }
 
 bool platform_launch(Debugger *dbg, const char *args)
@@ -230,21 +232,6 @@ static LRESULT CALLBACK wnd_proc(HWND hWnd, UINT msg,
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 {
-    // Convert wide argv to UTF-8
-    int wargc;
-    LPWSTR *wargv = CommandLineToArgvW(GetCommandLineW(), &wargc);
-    std::vector<std::string> arg_strings;
-    for (int i = 0; i < wargc; i++) {
-        arg_strings.push_back(to_utf8(wargv[i]));
-    }
-    LocalFree(wargv);
-    // Collect pointers after all strings are in place (no more reallocation)
-    std::vector<char *> argv_ptrs;
-    for (auto &s : arg_strings) {
-        argv_ptrs.push_back(s.data());
-    }
-    argv_ptrs.push_back(nullptr);
-
     // Register window class
     WNDCLASSEXW wc = {};
     wc.cbSize = sizeof(wc);
@@ -290,7 +277,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
     Debugger dbg = {};
-    std::string initial_args = platform_quote_argv(wargc, argv_ptrs.data());
+    std::string initial_args = platform_quote_argv(0, nullptr);
     snprintf(dbg.cmdline, sizeof(dbg.cmdline), "%s", initial_args.c_str());
     dcmake_init(&dbg);
 
