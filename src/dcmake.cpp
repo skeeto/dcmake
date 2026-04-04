@@ -235,6 +235,32 @@ static void render_ui(Debugger *dbg)
     bool stopped = dbg->state == DapState::STOPPED;
     bool editable = idle || terminated;
 
+    // Keyboard shortcuts (skip when typing in text box)
+    ImGuiIO &io = ImGui::GetIO();
+    if (!io.WantTextInput) {
+        if (ImGui::IsKeyPressed(ImGuiKey_F5)) {
+            if (io.KeyShift) {
+                if (!idle) dcmake_stop(dbg);
+            } else if (editable) {
+                dcmake_start(dbg);
+            } else if (stopped) {
+                dap_request(dbg, "continue", {{"threadId", dbg->thread_id}});
+                dbg->state = DapState::RUNNING;
+                dbg->status = "Running...";
+            }
+        }
+        if (stopped && ImGui::IsKeyPressed(ImGuiKey_F10)) {
+            dap_request(dbg, "next", {{"threadId", dbg->thread_id}});
+            dbg->state = DapState::RUNNING;
+            dbg->status = "Running...";
+        }
+        if (stopped && ImGui::IsKeyPressed(ImGuiKey_F11)) {
+            dap_request(dbg, "stepIn", {{"threadId", dbg->thread_id}});
+            dbg->state = DapState::RUNNING;
+            dbg->status = "Running...";
+        }
+    }
+
     // Command line text box
     float avail_w = ImGui::GetContentRegionAvail().x;
     ImGui::SetNextItemWidth(avail_w * 0.5f);

@@ -19,7 +19,18 @@ On Linux you may need to install `xorg-dev` or similar first.
 
     $ dcmake [cmake args..]
 
-Where any arguments become CMake arguments in the debugger.
+Where any arguments become CMake arguments in the debugger. The
+command line is editable from the UI and supports shell variable
+expansion (`$VAR` on Unix, `%VAR%` on Windows).
+
+## Shortcuts
+
+| Key | Action |
+|-----|--------|
+| F5 | Start / Continue |
+| Shift+F5 | Stop |
+| F10 | Step Over |
+| F11 | Step In |
 
 
 [DAP]: https://microsoft.github.io/debug-adapter-protocol/
