@@ -1,5 +1,5 @@
 #ifdef _WIN32
-#include "dcmake.h"
+#include "dcmake.hpp"
 
 #include <windows.h>
 #include <shlobj.h>

@@ -1,5 +1,5 @@
-#ifndef DCMAKE_H
-#define DCMAKE_H
+#ifndef DCMAKE_HPP
+#define DCMAKE_HPP
 
 #include <atomic>
 #include <deque>
