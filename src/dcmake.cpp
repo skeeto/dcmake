@@ -88,6 +88,29 @@ static void reader_thread_func(Debugger *dbg)
     }
 }
 
+static void stdout_thread_func(Debugger *dbg)
+{
+    char tmp[4096];
+    int skip_lines = 3;  // cmake debugger preamble
+    while (dbg->stdout_running.load()) {
+        int n = dbg->stdout_read(dbg->platform, tmp, sizeof(tmp));
+        if (n <= 0) break;
+        char *start = tmp;
+        char *end = tmp + n;
+        while (skip_lines > 0 && start < end) {
+            char *nl = (char *)memchr(start, '\n', (size_t)(end - start));
+            if (!nl) { start = end; break; }
+            skip_lines--;
+            start = nl + 1;
+        }
+        if (start < end) {
+            std::lock_guard<std::mutex> lock(dbg->queue_mutex);
+            dbg->stdout_pending.append(start, (size_t)(end - start));
+        }
+    }
+    dbg->stdout_running.store(false);
+}
+
 // --- Source file cache ---
 
 static SourceFile *get_source(Debugger *dbg, const std::string &path)
@@ -432,7 +455,11 @@ static void handle_event(Debugger *dbg, const json &msg)
     } else if (event == "stopped") {
         auto &body = msg["body"];
         dbg->thread_id = body.value("threadId", dbg->thread_id);
-        dbg->status = "Paused";
+        std::string reason = body.value("reason", "");
+        if (reason.empty())
+            dbg->status = "Paused";
+        else
+            dbg->status = "Paused (" + reason + ")";
 
         dap_request(dbg, "stackTrace", {{"threadId", dbg->thread_id}});
     } else if (event == "terminated") {
@@ -460,7 +487,9 @@ static void handle_event(Debugger *dbg, const json &msg)
     } else if (event == "thread") {
         // Thread started/exited -- informational only
     } else if (event == "output") {
-        // CMake output -- could log somewhere eventually
+        if (msg.contains("body")) {
+            dbg->output += msg["body"].value("output", "");
+        }
     }
 }
 
@@ -470,6 +499,10 @@ static void process_messages(Debugger *dbg)
     {
         std::lock_guard<std::mutex> lock(dbg->queue_mutex);
         messages.swap(dbg->inbox);
+        if (!dbg->stdout_pending.empty()) {
+            dbg->output += dbg->stdout_pending;
+            dbg->stdout_pending.clear();
+        }
     }
 
     for (auto &raw : messages) {
@@ -1351,6 +1384,24 @@ static void render_filters_panel(Debugger *dbg)
     ImGui::End();
 }
 
+static void render_output(Debugger *dbg)
+{
+    if (!dbg->show_output) return;
+    if (!ImGui::Begin("Output", &dbg->show_output)) {
+        ImGui::End();
+        return;
+    }
+
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0, 0, 0, 0));
+    ImGui::InputTextMultiline("##output", dbg->output.data(),
+                              dbg->output.size() + 1,
+                              ImVec2(-1, -1),
+                              ImGuiInputTextFlags_ReadOnly);
+    ImGui::PopStyleColor();
+
+    ImGui::End();
+}
+
 static void render_ui(Debugger *dbg)
 {
     // Keyboard shortcuts (global, skip when typing)
@@ -1378,6 +1429,7 @@ static void render_ui(Debugger *dbg)
             ImGui::MenuItem("Tests", nullptr, &dbg->show_tests);
             ImGui::MenuItem("Breakpoints", nullptr, &dbg->show_breakpoints);
             ImGui::MenuItem("Exception Filters", nullptr, &dbg->show_filters);
+            ImGui::MenuItem("Output", nullptr, &dbg->show_output);
             ImGui::EndMenu();
         }
         ImGui::EndMainMenuBar();
@@ -1432,6 +1484,7 @@ static void render_ui(Debugger *dbg)
 
         dbg->source_dock_id = center;
         ImGui::DockBuilderDockWindow("Call Stack", bottom);
+        ImGui::DockBuilderDockWindow("Output", bottom);
         ImGui::DockBuilderDockWindow("Locals", bottom_right);
         ImGui::DockBuilderDockWindow("Breakpoints", bottom_right);
         ImGui::DockBuilderDockWindow("Exception Filters", bottom_right);
@@ -1454,6 +1507,7 @@ static void render_ui(Debugger *dbg)
     render_tests(dbg);
     render_breakpoints_panel(dbg);
     render_filters_panel(dbg);
+    render_output(dbg);
 }
 
 // --- Config persistence ---
@@ -1480,6 +1534,7 @@ static void save_config(Debugger *dbg)
     f << "show_tests=" << dbg->show_tests << "\n";
     f << "show_breakpoints=" << dbg->show_breakpoints << "\n";
     f << "show_filters=" << dbg->show_filters << "\n";
+    f << "show_output=" << dbg->show_output << "\n";
 
     // Breakpoints: tab-separated path, line, enabled, line_text
     for (auto &bp : dbg->breakpoints) {
@@ -1526,6 +1581,7 @@ void dcmake_load_config(Debugger *dbg)
         else if (key == "show_tests") dbg->show_tests = val;
         else if (key == "show_breakpoints") dbg->show_breakpoints = val;
         else if (key == "show_filters") dbg->show_filters = val;
+        else if (key == "show_output") dbg->show_output = val;
     }
 }
 
@@ -1554,6 +1610,8 @@ void dcmake_start(Debugger *dbg)
     dbg->current_line = 0;
     dbg->scroll_to_line = false;
     dbg->inbox.clear();
+    dbg->output.clear();
+    dbg->stdout_pending.clear();
 
     dbg->state = DapState::CONNECTING;
     dbg->status = "Running";
@@ -1563,9 +1621,13 @@ void dcmake_start(Debugger *dbg)
         return;
     }
 
-    // Start reader thread
+    // Start reader threads
     dbg->reader_running.store(true);
     dbg->reader_thread = std::thread(reader_thread_func, dbg);
+    if (dbg->stdout_read) {
+        dbg->stdout_running.store(true);
+        dbg->stdout_thread = std::thread(stdout_thread_func, dbg);
+    }
 
     // Begin DAP handshake
     dbg->state = DapState::INITIALIZING;
@@ -1593,11 +1655,21 @@ void dcmake_stop(Debugger *dbg)
         dbg->reader_thread.join();
     }
 
+    dbg->stdout_running.store(false);
+    if (dbg->stdout_shutdown) {
+        dbg->stdout_shutdown(dbg->platform);
+    }
+    if (dbg->stdout_thread.joinable()) {
+        dbg->stdout_thread.join();
+    }
+
     platform_cleanup(dbg);
 
     dbg->pipe_read = nullptr;
     dbg->pipe_write = nullptr;
     dbg->pipe_shutdown = nullptr;
+    dbg->stdout_read = nullptr;
+    dbg->stdout_shutdown = nullptr;
 
     dbg->state = DapState::IDLE;
     dbg->status = "Stopped";

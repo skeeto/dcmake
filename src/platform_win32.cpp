@@ -21,6 +21,7 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(
 
 struct Win32Platform {
     HANDLE pipe = INVALID_HANDLE_VALUE;
+    HANDLE stdout_handle = INVALID_HANDLE_VALUE;
     HANDLE job = INVALID_HANDLE_VALUE;
     HANDLE cmake_process = INVALID_HANDLE_VALUE;
     OVERLAPPED read_op = {};
@@ -68,6 +69,24 @@ static void win32_pipe_shutdown(void *ctx)
         CancelIo(p->pipe);
         CloseHandle(p->pipe);
         p->pipe = INVALID_HANDLE_VALUE;
+    }
+}
+
+static int win32_stdout_read(void *ctx, char *buf, int len)
+{
+    auto *p = (Win32Platform *)ctx;
+    DWORD n = 0;
+    if (ReadFile(p->stdout_handle, buf, (DWORD)len, &n, nullptr))
+        return (int)n;
+    return 0;
+}
+
+static void win32_stdout_shutdown(void *ctx)
+{
+    auto *p = (Win32Platform *)ctx;
+    if (p->stdout_handle != INVALID_HANDLE_VALUE) {
+        CloseHandle(p->stdout_handle);
+        p->stdout_handle = INVALID_HANDLE_VALUE;
     }
 }
 
@@ -119,6 +138,8 @@ bool platform_launch(Debugger *dbg, const char *args)
     dbg->pipe_read = win32_pipe_read;
     dbg->pipe_write = win32_pipe_write;
     dbg->pipe_shutdown = win32_pipe_shutdown;
+    dbg->stdout_read = win32_stdout_read;
+    dbg->stdout_shutdown = win32_stdout_shutdown;
 
     // Build named pipe path
     static int launch_count = 0;
@@ -141,16 +162,37 @@ bool platform_launch(Debugger *dbg, const char *args)
     SetInformationJobObject(p->job, JobObjectExtendedLimitInformation,
                             &jeli, sizeof(jeli));
 
+    // Create pipe for capturing cmake stdout/stderr
+    SECURITY_ATTRIBUTES sa = {};
+    sa.nLength = sizeof(sa);
+    sa.bInheritHandle = TRUE;
+    HANDLE stdout_read_h = INVALID_HANDLE_VALUE;
+    HANDLE stdout_write_h = INVALID_HANDLE_VALUE;
+    if (!CreatePipe(&stdout_read_h, &stdout_write_h, &sa, 0)) {
+        dbg->status = "Failed to create stdout pipe";
+        return false;
+    }
+    SetHandleInformation(stdout_read_h, HANDLE_FLAG_INHERIT, 0);
+
     // Launch cmake subprocess suspended, assign to job, then resume
     STARTUPINFOW si = {};
     si.cb = sizeof(si);
+    si.dwFlags = STARTF_USESTDHANDLES;
+    si.hStdOutput = stdout_write_h;
+    si.hStdError = stdout_write_h;
+    si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
     PROCESS_INFORMATION pi = {};
     if (!CreateProcessW(nullptr, cmdline.data(), nullptr, nullptr,
-                        FALSE, CREATE_SUSPENDED, nullptr, nullptr,
+                        TRUE, CREATE_SUSPENDED | CREATE_NO_WINDOW,
+                        nullptr, nullptr,
                         &si, &pi)) {
+        CloseHandle(stdout_read_h);
+        CloseHandle(stdout_write_h);
         dbg->status = "Failed to start cmake";
         return false;
     }
+    CloseHandle(stdout_write_h);
+    p->stdout_handle = stdout_read_h;
     AssignProcessToJobObject(p->job, pi.hProcess);
     ResumeThread(pi.hThread);
     CloseHandle(pi.hThread);
@@ -192,6 +234,10 @@ void platform_cleanup(Debugger *dbg)
     if (p->pipe != INVALID_HANDLE_VALUE) {
         CloseHandle(p->pipe);
         p->pipe = INVALID_HANDLE_VALUE;
+    }
+    if (p->stdout_handle != INVALID_HANDLE_VALUE) {
+        CloseHandle(p->stdout_handle);
+        p->stdout_handle = INVALID_HANDLE_VALUE;
     }
     if (p->read_op.hEvent) CloseHandle(p->read_op.hEvent);
     if (p->write_op.hEvent) CloseHandle(p->write_op.hEvent);
@@ -270,10 +316,8 @@ static LRESULT CALLBACK wnd_proc(HWND hWnd, UINT msg,
     return DefWindowProcW(hWnd, msg, wParam, lParam);
 }
 
-int main()
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 {
-    HINSTANCE hInstance = GetModuleHandle(nullptr);
-    int nCmdShow = SW_SHOWDEFAULT;
     // Register window class
     WNDCLASSEXW wc = {};
     wc.cbSize = sizeof(wc);

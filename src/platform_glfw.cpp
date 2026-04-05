@@ -29,6 +29,7 @@
 
 struct PosixPlatform {
     int sock_fd = -1;
+    int stdout_fd = -1;
     pid_t cmake_pid = -1;
     std::string pipe_path;
 };
@@ -53,6 +54,22 @@ static void posix_pipe_shutdown(void *ctx)
         shutdown(p->sock_fd, SHUT_RDWR);
         close(p->sock_fd);
         p->sock_fd = -1;
+    }
+}
+
+static int posix_stdout_read(void *ctx, char *buf, int len)
+{
+    auto *p = (PosixPlatform *)ctx;
+    ssize_t n = read(p->stdout_fd, buf, (size_t)len);
+    return n > 0 ? (int)n : 0;
+}
+
+static void posix_stdout_shutdown(void *ctx)
+{
+    auto *p = (PosixPlatform *)ctx;
+    if (p->stdout_fd >= 0) {
+        close(p->stdout_fd);
+        p->stdout_fd = -1;
     }
 }
 
@@ -96,6 +113,8 @@ bool platform_launch(Debugger *dbg, const char *args)
     dbg->pipe_read = posix_pipe_read;
     dbg->pipe_write = posix_pipe_write;
     dbg->pipe_shutdown = posix_pipe_shutdown;
+    dbg->stdout_read = posix_stdout_read;
+    dbg->stdout_shutdown = posix_stdout_shutdown;
 
     // Build pipe path
     static int launch_count = 0;
@@ -109,17 +128,32 @@ bool platform_launch(Debugger *dbg, const char *args)
     cmd += ' ';
     cmd += args;
 
+    // Create pipe for capturing cmake stdout/stderr
+    int stdout_pipe[2];
+    if (pipe(stdout_pipe) < 0) {
+        dbg->status = "Failed to create stdout pipe";
+        return false;
+    }
+
     // Fork cmake subprocess via sh -c in its own process group
     pid_t pid = fork();
     if (pid == 0) {
         setpgid(0, 0);
+        dup2(stdout_pipe[1], STDOUT_FILENO);
+        dup2(stdout_pipe[1], STDERR_FILENO);
+        close(stdout_pipe[0]);
+        close(stdout_pipe[1]);
         execlp("sh", "sh", "-c", cmd.c_str(), nullptr);
         _exit(127);
     }
     if (pid < 0) {
+        close(stdout_pipe[0]);
+        close(stdout_pipe[1]);
         dbg->status = "Failed to fork cmake";
         return false;
     }
+    close(stdout_pipe[1]);
+    p->stdout_fd = stdout_pipe[0];
     p->cmake_pid = pid;
 
     // Connect to cmake's unix domain socket (retry loop)
@@ -164,6 +198,12 @@ void platform_cleanup(Debugger *dbg)
     if (p->sock_fd >= 0) {
         close(p->sock_fd);
         p->sock_fd = -1;
+    }
+
+    // Close stdout pipe if still open
+    if (p->stdout_fd >= 0) {
+        close(p->stdout_fd);
+        p->stdout_fd = -1;
     }
 
     // Clean up socket file

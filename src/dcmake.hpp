@@ -83,6 +83,13 @@ struct Debugger {
     bool (*pipe_write)(void *ctx, const char *buf, int len) = nullptr;
     void (*pipe_shutdown)(void *ctx) = nullptr;
 
+    // Platform stdout capture (set by platform_launch, may be null)
+    int  (*stdout_read)(void *ctx, char *buf, int len) = nullptr;
+    void (*stdout_shutdown)(void *ctx) = nullptr;
+    std::thread stdout_thread;
+    std::atomic<bool> stdout_running{false};
+    std::string stdout_pending;  // guarded by queue_mutex
+
     // DAP protocol state
     bool pause_at_entry = false;
     int next_seq = 1;
@@ -118,6 +125,8 @@ struct Debugger {
     bool show_tests = true;
     bool show_breakpoints = true;
     bool show_filters = true;
+    bool show_output = true;
+    std::string output;
 };
 
 // Platform layer must implement these.
