@@ -251,6 +251,9 @@ static LRESULT CALLBACK wnd_proc(HWND hWnd, UINT msg,
         return true;
 
     switch (msg) {
+    case WM_SYSKEYDOWN:
+        // Prevent F10/Alt+key from activating Win32 menu loop
+        return 0;
     case WM_SIZE:
         if (g_device && wParam != SIZE_MINIMIZED) {
             if (g_rtv) { g_rtv->Release(); g_rtv = nullptr; }
