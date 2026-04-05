@@ -443,46 +443,44 @@ static void render_toolbar(Debugger *dbg)
     bool stopped = dbg->state == DapState::STOPPED;
     bool editable = idle || terminated;
 
-    // Keyboard shortcuts (skip when typing in text box)
+    // Global keyboard shortcuts (F-keys work regardless of focus, like VS)
     ImGuiIO &io = ImGui::GetIO();
-    if (!io.WantTextInput) {
-        if (ImGui::IsKeyPressed(ImGuiKey_F5)) {
-            if (io.KeyShift) {
-                if (!idle) dcmake_stop(dbg);
-            } else if (editable) {
-                dbg->pause_at_entry = false;
-                dcmake_start(dbg);
-            } else if (stopped) {
-                dap_request(dbg, "continue", {{"threadId", dbg->thread_id}});
-                dbg->state = DapState::RUNNING;
-                dbg->status = "Running";
-            }
+    if (ImGui::IsKeyPressed(ImGuiKey_F5)) {
+        if (io.KeyShift) {
+            if (!idle) dcmake_stop(dbg);
+        } else if (editable) {
+            dbg->pause_at_entry = false;
+            dcmake_start(dbg);
+        } else if (stopped) {
+            dap_request(dbg, "continue", {{"threadId", dbg->thread_id}});
+            dbg->state = DapState::RUNNING;
+            dbg->status = "Running";
         }
-        if (ImGui::IsKeyPressed(ImGuiKey_F10)) {
-            if (editable) {
-                dbg->pause_at_entry = true;
-                dcmake_start(dbg);
-            } else if (stopped) {
-                dap_request(dbg, "next", {{"threadId", dbg->thread_id}});
-                dbg->state = DapState::RUNNING;
-                dbg->status = "Running";
-            }
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_F10)) {
+        if (editable) {
+            dbg->pause_at_entry = true;
+            dcmake_start(dbg);
+        } else if (stopped) {
+            dap_request(dbg, "next", {{"threadId", dbg->thread_id}});
+            dbg->state = DapState::RUNNING;
+            dbg->status = "Running";
         }
-        if (ImGui::IsKeyPressed(ImGuiKey_F11)) {
-            if (io.KeyShift) {
-                if (stopped) {
-                    dap_request(dbg, "stepOut", {{"threadId", dbg->thread_id}});
-                    dbg->state = DapState::RUNNING;
-                    dbg->status = "Running";
-                }
-            } else if (editable) {
-                dbg->pause_at_entry = true;
-                dcmake_start(dbg);
-            } else if (stopped) {
-                dap_request(dbg, "stepIn", {{"threadId", dbg->thread_id}});
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_F11)) {
+        if (io.KeyShift) {
+            if (stopped) {
+                dap_request(dbg, "stepOut", {{"threadId", dbg->thread_id}});
                 dbg->state = DapState::RUNNING;
                 dbg->status = "Running";
             }
+        } else if (editable) {
+            dbg->pause_at_entry = true;
+            dcmake_start(dbg);
+        } else if (stopped) {
+            dap_request(dbg, "stepIn", {{"threadId", dbg->thread_id}});
+            dbg->state = DapState::RUNNING;
+            dbg->status = "Running";
         }
     }
 
@@ -1209,12 +1207,10 @@ static void render_ui(Debugger *dbg)
 {
     // Keyboard shortcuts (global, skip when typing)
     ImGuiIO &menu_io = ImGui::GetIO();
-    if (!menu_io.WantTextInput) {
-        bool ctrl = menu_io.KeyCtrl;
-        if (ctrl && ImGui::IsKeyPressed(ImGuiKey_O)) {
-            std::string path = platform_open_file_dialog();
-            if (!path.empty()) open_source(dbg, path);
-        }
+    bool ctrl = menu_io.KeyCtrl;
+    if (ctrl && ImGui::IsKeyPressed(ImGuiKey_O)) {
+        std::string path = platform_open_file_dialog();
+        if (!path.empty()) open_source(dbg, path);
     }
 
     // Main menu bar
