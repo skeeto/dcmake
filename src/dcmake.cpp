@@ -157,6 +157,10 @@ static void toggle_breakpoint(Debugger *dbg, const std::string &path, int line)
     LineBreakpoint bp;
     bp.path = path;
     bp.line = line;
+    SourceFile *sf = get_source(dbg, path);
+    if (sf && line >= 1 && line <= (int)sf->lines.size()) {
+        bp.line_text = sf->lines[line - 1];
+    }
     dbg->breakpoints.push_back(bp);
     if (dbg->state != DapState::IDLE && dbg->state != DapState::TERMINATED) {
         send_breakpoints_for_file(dbg, path);
@@ -171,6 +175,58 @@ static int has_breakpoint(Debugger *dbg, const std::string &path, int line)
             return bp.enabled ? 1 : 2;
     }
     return 0;
+}
+
+// Strip leading and trailing whitespace from a string_view
+static std::string_view strip(std::string_view s)
+{
+    while (!s.empty() && (s.front() == ' ' || s.front() == '\t')) s.remove_prefix(1);
+    while (!s.empty() && (s.back() == ' ' || s.back() == '\t')) s.remove_suffix(1);
+    return s;
+}
+
+// Relocate breakpoints for a file by matching stored line text against
+// current file contents.  Preserves breakpoint ordering within the file.
+static void relocate_breakpoints(Debugger *dbg, const std::string &path)
+{
+    SourceFile *sf = get_source(dbg, path);
+    if (!sf) return;
+
+    // Collect breakpoints for this file, sorted by line
+    std::vector<LineBreakpoint *> bps;
+    for (auto &bp : dbg->breakpoints) {
+        if (bp.path == path && !bp.line_text.empty()) bps.push_back(&bp);
+    }
+    std::sort(bps.begin(), bps.end(),
+              [](auto *a, auto *b) { return a->line < b->line; });
+
+    int num_lines = (int)sf->lines.size();
+    int min_line = 1;  // order constraint: next match must be >= min_line
+    constexpr int MAX_SEARCH = 100;
+
+    for (auto *bp : bps) {
+        std::string_view target = strip(bp->line_text);
+        int best = -1;
+        for (int delta = 0; delta <= MAX_SEARCH; delta++) {
+            int candidates[2] = {bp->line + delta, bp->line - delta};
+            for (int c : candidates) {
+                if (c < min_line || c > num_lines) continue;
+                if (strip(sf->lines[c - 1]) == target) {
+                    best = c;
+                    goto found;
+                }
+            }
+        }
+    found:
+        if (best > 0) {
+            bp->line = best;
+            min_line = best + 1;
+        } else {
+            // No match — leave in place, clamp to order constraint
+            if (bp->line < min_line) bp->line = min_line;
+            min_line = bp->line + 1;
+        }
+    }
 }
 
 // --- Source tab helpers ---
@@ -355,7 +411,7 @@ static void handle_event(Debugger *dbg, const json &msg)
         // Send exception breakpoints, then any line breakpoints, then pause+configurationDone
         send_exception_breakpoints(dbg);
 
-        // Send breakpoints for each unique file
+        // Collect unique files, relocate breakpoints, then send
         std::vector<std::string> files;
         for (auto &bp : dbg->breakpoints) {
             bool found = false;
@@ -365,6 +421,7 @@ static void handle_event(Debugger *dbg, const json &msg)
             if (!found) files.push_back(bp.path);
         }
         for (auto &f : files) {
+            relocate_breakpoints(dbg, f);
             send_breakpoints_for_file(dbg, f);
         }
 
@@ -1391,6 +1448,12 @@ static void save_config(Debugger *dbg)
     f << "show_tests=" << dbg->show_tests << "\n";
     f << "show_breakpoints=" << dbg->show_breakpoints << "\n";
     f << "show_filters=" << dbg->show_filters << "\n";
+
+    // Breakpoints: tab-separated path, line, enabled, line_text
+    for (auto &bp : dbg->breakpoints) {
+        f << "bp\t" << bp.path << "\t" << bp.line << "\t"
+          << bp.enabled << "\t" << bp.line_text << "\n";
+    }
 }
 
 void dcmake_load_config(Debugger *dbg)
@@ -1399,6 +1462,27 @@ void dcmake_load_config(Debugger *dbg)
     if (!f) return;
     std::string line;
     while (std::getline(f, line)) {
+        if (line.starts_with("bp\t")) {
+            // Parse: bp\tpath\tline\tenabled\tline_text
+            size_t p1 = 3;  // skip "bp\t"
+            size_t p2 = line.find('\t', p1);
+            if (p2 == std::string::npos) continue;
+            size_t p3 = line.find('\t', p2 + 1);
+            if (p3 == std::string::npos) continue;
+            size_t p4 = line.find('\t', p3 + 1);
+            if (p4 == std::string::npos) continue;
+
+            LineBreakpoint bp;
+            bp.path = line.substr(p1, p2 - p1);
+            bp.line = std::atoi(line.c_str() + p2 + 1);
+            bp.enabled = line[p3 + 1] == '1';
+            bp.line_text = line.substr(p4 + 1);
+            if (!bp.path.empty() && bp.line > 0) {
+                dbg->breakpoints.push_back(std::move(bp));
+            }
+            continue;
+        }
+
         auto eq = line.find('=');
         if (eq == std::string::npos) continue;
         std::string key = line.substr(0, eq);

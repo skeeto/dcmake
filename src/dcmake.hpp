@@ -56,6 +56,7 @@ struct OpenSource {
 struct LineBreakpoint {
     std::string path;
     int line;
+    std::string line_text;  // content when set, for relocation after edits
     int id = 0;
     bool verified = false;
     bool enabled = true;
