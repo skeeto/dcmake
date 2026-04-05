@@ -32,7 +32,13 @@ The `DEPS` variable controls how nlohmann/json and GLFW are resolved:
 Dear ImGui (docking branch) is always bundled or downloaded since no
 distributions package it.
 
-To bundle dependencies for a source release:
+To produce a source release tarball with bundled dependencies:
+
+    $ cmake -P cmake/SourceRelease.cmake
+
+This runs `git archive`, downloads dependencies into the tree, and
+produces a self-contained `dcmake-VERSION.tar.gz`. To bundle
+dependencies into `deps/` in the working tree instead:
 
     $ cmake -P cmake/BundleDeps.cmake
 

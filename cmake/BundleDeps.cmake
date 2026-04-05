@@ -1,7 +1,9 @@
 # Bundle dependencies into deps/ for offline source releases.
 # Usage: cmake -P cmake/BundleDeps.cmake
 
-set(DEPS_DIR "${CMAKE_CURRENT_LIST_DIR}/../deps")
+if(NOT DEPS_DIR)
+  set(DEPS_DIR "${CMAKE_CURRENT_LIST_DIR}/../deps")
+endif()
 
 set(JSON_URL "https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz")
 set(JSON_HASH "d6c65aca6b1ed68e7a182f4757257b107ae403032760ed6ef121c9d55e81757d")
