@@ -963,16 +963,30 @@ static void render_stack(Debugger *dbg)
 }
 
 // Emit variable rows into an already-open table (recursive)
+// Read-only InputText that fills the column width.
+// Safe to const_cast: ImGui never writes back in ReadOnly mode.
+static void selectable_text(const char *label, const char *text, int len)
+{
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    ImGui::InputText(label, const_cast<char *>(text), len + 1,
+                     ImGuiInputTextFlags_ReadOnly);
+}
+
 static void render_variable_rows(Debugger *dbg, std::vector<DapVariable> &vars)
 {
     for (auto &v : vars) {
+        ImGui::PushID(&v);
         if (v.variables_ref > 0) {
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             bool open = ImGui::TreeNode(v.name.c_str());
             ImGui::TableNextColumn();
-            ImGui::TextDisabled("%s", v.value.empty() ? v.type.c_str()
-                                                      : v.value.c_str());
+            const char *val = v.value.empty() ? v.type.c_str()
+                                              : v.value.c_str();
+            ImGui::PushStyleColor(ImGuiCol_Text,
+                ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+            selectable_text("##val", val, (int)strlen(val));
+            ImGui::PopStyleColor();
             if (open) {
                 if (!v.fetched && v.children.empty()) {
                     fetch_variables(dbg, v.variables_ref);
@@ -991,7 +1005,10 @@ static void render_variable_rows(Debugger *dbg, std::vector<DapVariable> &vars)
             ImGui::TableNextColumn();
             bool open = ImGui::TreeNode(v.name.c_str());
             ImGui::TableNextColumn();
-            ImGui::TextDisabled("%s", v.value.c_str());
+            ImGui::PushStyleColor(ImGuiCol_Text,
+                ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+            selectable_text("##val", v.value.c_str(), (int)v.value.size());
+            ImGui::PopStyleColor();
             if (open) {
                 size_t idx = 0;
                 size_t start = 0;
@@ -999,12 +1016,14 @@ static void render_variable_rows(Debugger *dbg, std::vector<DapVariable> &vars)
                     size_t semi = v.value.find(';', start);
                     size_t end = (semi != std::string::npos) ? semi
                                                              : v.value.size();
+                    std::string item(v.value.data() + start, end - start);
+                    ImGui::PushID((int)idx);
                     ImGui::TableNextRow();
                     ImGui::TableNextColumn();
                     ImGui::BulletText("[%zu]", idx++);
                     ImGui::TableNextColumn();
-                    ImGui::TextUnformatted(v.value.data() + start,
-                                           v.value.data() + end);
+                    selectable_text("##val", item.c_str(), (int)item.size());
+                    ImGui::PopID();
                     if (semi == std::string::npos) break;
                     start = semi + 1;
                 }
@@ -1013,10 +1032,13 @@ static void render_variable_rows(Debugger *dbg, std::vector<DapVariable> &vars)
         } else {
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
-            ImGui::BulletText("%s", v.name.c_str());
+            ImGui::Bullet();
+            ImGui::SameLine();
+            selectable_text("##name", v.name.c_str(), (int)v.name.size());
             ImGui::TableNextColumn();
-            ImGui::TextUnformatted(v.value.c_str());
+            selectable_text("##val", v.value.c_str(), (int)v.value.size());
         }
+        ImGui::PopID();
     }
 }
 
