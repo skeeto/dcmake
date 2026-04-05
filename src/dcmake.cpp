@@ -1485,23 +1485,25 @@ static void render_ui(Debugger *dbg)
                                   ImGuiDockNodeFlags_DockSpace);
         ImGui::DockBuilderSetNodeSize(dockspace_id, dock_size);
 
-        ImGuiID center = dockspace_id;
-        ImGuiID bottom = 0;
-        ImGui::DockBuilderSplitNode(center, ImGuiDir_Down, 0.3f,
-                                    &bottom, &center);
-        ImGuiID bottom_right = 0;
-        ImGui::DockBuilderSplitNode(bottom, ImGuiDir_Right, 0.5f,
-                                    &bottom_right, &bottom);
+        ImGuiID left = 0, right = 0;
+        ImGui::DockBuilderSplitNode(dockspace_id, ImGuiDir_Right, 0.5f,
+                                    &right, &left);
+        ImGuiID left_top = 0, left_bottom = 0;
+        ImGui::DockBuilderSplitNode(left, ImGuiDir_Down, 0.33f,
+                                    &left_bottom, &left_top);
+        ImGuiID right_top = 0, right_bottom = 0;
+        ImGui::DockBuilderSplitNode(right, ImGuiDir_Down, 0.33f,
+                                    &right_bottom, &right_top);
 
-        dbg->source_dock_id = center;
-        ImGui::DockBuilderDockWindow("Call Stack", bottom);
-        ImGui::DockBuilderDockWindow("Output", bottom);
-        ImGui::DockBuilderDockWindow("Locals", bottom_right);
-        ImGui::DockBuilderDockWindow("Breakpoints", bottom_right);
-        ImGui::DockBuilderDockWindow("Exception Filters", bottom_right);
-        ImGui::DockBuilderDockWindow("Cache Variables", bottom_right);
-        ImGui::DockBuilderDockWindow("Targets", bottom_right);
-        ImGui::DockBuilderDockWindow("Tests", bottom_right);
+        dbg->source_dock_id = left_top;
+        ImGui::DockBuilderDockWindow("Output", left_bottom);
+        ImGui::DockBuilderDockWindow("Locals", right_top);
+        ImGui::DockBuilderDockWindow("Cache Variables", right_top);
+        ImGui::DockBuilderDockWindow("Targets", right_top);
+        ImGui::DockBuilderDockWindow("Tests", right_top);
+        ImGui::DockBuilderDockWindow("Breakpoints", right_bottom);
+        ImGui::DockBuilderDockWindow("Call Stack", right_bottom);
+        ImGui::DockBuilderDockWindow("Exception Filters", right_bottom);
         ImGui::DockBuilderFinish(dockspace_id);
     }
 
@@ -1511,12 +1513,12 @@ static void render_ui(Debugger *dbg)
 
     // Render all panels
     render_sources(dbg);
-    render_stack(dbg);
     render_locals(dbg);
     render_cache(dbg);
     render_targets(dbg);
     render_tests(dbg);
     render_breakpoints_panel(dbg);
+    render_stack(dbg);
     render_filters_panel(dbg);
     render_output(dbg);
 }
