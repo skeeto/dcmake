@@ -20,6 +20,7 @@ execute_process(
 if(rc OR NOT VERSION)
   string(TIMESTAMP VERSION "%Y%m%d" UTC)
 endif()
+string(REGEX REPLACE "^v" "" VERSION "${VERSION}")
 
 set(NAME "dcmake-${VERSION}")
 set(WORK "${SOURCE_DIR}/_source_release")
