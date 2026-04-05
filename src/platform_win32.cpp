@@ -357,6 +357,8 @@ static LRESULT CALLBACK wnd_proc(HWND hWnd, UINT msg,
 
     switch (msg) {
     case WM_SYSKEYDOWN:
+        // Let Alt+F4 through to DefWindowProcW for window close
+        if (wParam == VK_F4) break;
         // Prevent F10/Alt+key from activating Win32 menu loop
         return 0;
     case WM_SIZE:
