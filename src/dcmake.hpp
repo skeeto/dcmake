@@ -115,6 +115,10 @@ struct Debugger {
     // UI state
     std::string ini_path;
     char cmdline[4096] = {};
+    char filter_locals[256] = {};
+    char filter_cache[256] = {};
+    char filter_targets[256] = {};
+    char filter_tests[256] = {};
     std::string status;
     bool want_quit = false;
     bool first_layout = true;

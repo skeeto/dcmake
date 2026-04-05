@@ -1095,6 +1095,26 @@ static void render_stack(Debugger *dbg)
     ImGui::End();
 }
 
+// Case-insensitive substring search
+static bool icontains(const std::string &haystack, const char *needle)
+{
+    size_t nlen = strlen(needle);
+    if (nlen == 0) return true;
+    if (haystack.size() < nlen) return false;
+    for (size_t i = 0; i <= haystack.size() - nlen; i++) {
+        bool match = true;
+        for (size_t j = 0; j < nlen; j++) {
+            if (tolower((unsigned char)haystack[i + j]) !=
+                tolower((unsigned char)needle[j])) {
+                match = false;
+                break;
+            }
+        }
+        if (match) return true;
+    }
+    return false;
+}
+
 // Emit variable rows into an already-open table (recursive)
 // Read-only InputText that fills the column width.
 // Safe to const_cast: ImGui never writes back in ReadOnly mode.
@@ -1108,9 +1128,14 @@ static void selectable_text(const char *label, const char *text, size_t len)
     ImGui::PopStyleColor(2);
 }
 
-static void render_variable_rows(Debugger *dbg, std::vector<DapVariable> &vars)
+static void render_variable_rows(Debugger *dbg, std::vector<DapVariable> &vars,
+                                  const char *filter = "", int depth = 0)
 {
     for (auto &v : vars) {
+        if (depth == 0 && filter[0]) {
+            if (!icontains(v.name, filter) && !icontains(v.value, filter))
+                continue;
+        }
         ImGui::PushID(&v);
         if (v.variables_ref > 0) {
             ImGui::TableNextRow();
@@ -1132,7 +1157,7 @@ static void render_variable_rows(Debugger *dbg, std::vector<DapVariable> &vars)
                     ImGui::TextDisabled("Loading...");
                     ImGui::TableNextColumn();
                 } else {
-                    render_variable_rows(dbg, v.children);
+                    render_variable_rows(dbg, v.children, filter, depth + 1);
                 }
                 ImGui::TreePop();
             }
@@ -1179,14 +1204,15 @@ static void render_variable_rows(Debugger *dbg, std::vector<DapVariable> &vars)
 }
 
 // Render a variable tree with resizable name/value columns
-static void render_variable_tree(Debugger *dbg, std::vector<DapVariable> &vars)
+static void render_variable_tree(Debugger *dbg, std::vector<DapVariable> &vars,
+                                  const char *filter = "")
 {
     if (ImGui::BeginTable("##vars", 2,
             ImGuiTableFlags_Resizable |
             ImGuiTableFlags_BordersInnerV)) {
         ImGui::TableSetupColumn("Name");
         ImGui::TableSetupColumn("Value");
-        render_variable_rows(dbg, vars);
+        render_variable_rows(dbg, vars, filter);
         ImGui::EndTable();
     }
 }
@@ -1224,6 +1250,10 @@ static void render_locals(Debugger *dbg)
         return;
     }
 
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    ImGui::InputTextWithHint("##filter", "Filter...",
+                             dbg->filter_locals, sizeof(dbg->filter_locals));
+
     if (dbg->state == DapState::STOPPED || dbg->state == DapState::RUNNING) {
         DapVariable *locals = find_scope_child(dbg, "Locals");
         if (locals) {
@@ -1231,13 +1261,12 @@ static void render_locals(Debugger *dbg)
                 fetch_variables(dbg, locals->variables_ref);
                 locals->fetched = true;
             }
-            render_variable_tree(dbg, locals->children);
+            render_variable_tree(dbg, locals->children, dbg->filter_locals);
         } else if (dbg->scopes.empty()) {
             ImGui::TextDisabled("No scope data.");
         } else {
-            // Scopes loaded but "Locals" child not found yet — show top scope vars
             for (auto &scope : dbg->scopes) {
-                render_variable_tree(dbg, scope.variables);
+                render_variable_tree(dbg, scope.variables, dbg->filter_locals);
             }
         }
     } else {
@@ -1255,6 +1284,10 @@ static void render_cache(Debugger *dbg)
         return;
     }
 
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    ImGui::InputTextWithHint("##filter", "Filter...",
+                             dbg->filter_cache, sizeof(dbg->filter_cache));
+
     if (dbg->state == DapState::STOPPED || dbg->state == DapState::RUNNING) {
         DapVariable *cache = find_scope_child(dbg, "CacheVariables");
         if (cache) {
@@ -1262,7 +1295,7 @@ static void render_cache(Debugger *dbg)
                 fetch_variables(dbg, cache->variables_ref);
                 cache->fetched = true;
             }
-            render_variable_tree(dbg, cache->children);
+            render_variable_tree(dbg, cache->children, dbg->filter_cache);
         } else {
             ImGui::TextDisabled("No cache data.");
         }
@@ -1280,6 +1313,10 @@ static void render_targets(Debugger *dbg)
         return;
     }
 
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    ImGui::InputTextWithHint("##filter", "Filter...",
+                             dbg->filter_targets, sizeof(dbg->filter_targets));
+
     if (dbg->state == DapState::STOPPED || dbg->state == DapState::RUNNING) {
         DapVariable *targets = find_scope_child(dbg, "Targets");
         if (targets) {
@@ -1287,7 +1324,7 @@ static void render_targets(Debugger *dbg)
                 fetch_variables(dbg, targets->variables_ref);
                 targets->fetched = true;
             }
-            render_variable_tree(dbg, targets->children);
+            render_variable_tree(dbg, targets->children, dbg->filter_targets);
         } else {
             ImGui::TextDisabled("No target data.");
         }
@@ -1306,6 +1343,10 @@ static void render_tests(Debugger *dbg)
         return;
     }
 
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    ImGui::InputTextWithHint("##filter", "Filter...",
+                             dbg->filter_tests, sizeof(dbg->filter_tests));
+
     if (dbg->state == DapState::STOPPED || dbg->state == DapState::RUNNING) {
         DapVariable *tests = find_scope_child(dbg, "Tests");
         if (tests) {
@@ -1313,7 +1354,7 @@ static void render_tests(Debugger *dbg)
                 fetch_variables(dbg, tests->variables_ref);
                 tests->fetched = true;
             }
-            render_variable_tree(dbg, tests->children);
+            render_variable_tree(dbg, tests->children, dbg->filter_tests);
         } else {
             ImGui::TextDisabled("No test data.");
         }
@@ -1625,6 +1666,10 @@ void dcmake_start(Debugger *dbg)
     dbg->inbox.clear();
     dbg->output.clear();
     dbg->stdout_pending.clear();
+    dbg->filter_locals[0] = '\0';
+    dbg->filter_cache[0] = '\0';
+    dbg->filter_targets[0] = '\0';
+    dbg->filter_tests[0] = '\0';
 
     dbg->state = DapState::CONNECTING;
     dbg->status = "Running";
