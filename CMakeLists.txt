@@ -75,3 +75,7 @@ else()
   add_executable(dcmake src/dcmake.cpp src/platform_win32.cpp)
   target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json comdlg32)
 endif()
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  target_compile_options(dcmake PRIVATE -Wall -Wextra -Wconversion)
+endif()

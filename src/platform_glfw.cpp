@@ -36,14 +36,14 @@ struct PosixPlatform {
 static int posix_pipe_read(void *ctx, char *buf, int len)
 {
     auto *p = (PosixPlatform *)ctx;
-    ssize_t n = read(p->sock_fd, buf, len);
+    ssize_t n = read(p->sock_fd, buf, (size_t)len);
     return n > 0 ? (int)n : 0;
 }
 
 static bool posix_pipe_write(void *ctx, const char *buf, int len)
 {
     auto *p = (PosixPlatform *)ctx;
-    return write(p->sock_fd, buf, len) == len;
+    return write(p->sock_fd, buf, (size_t)len) == len;
 }
 
 static void posix_pipe_shutdown(void *ctx)

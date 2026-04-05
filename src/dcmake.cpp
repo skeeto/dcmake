@@ -52,7 +52,7 @@ static void reader_thread_func(Debugger *dbg)
             dbg->reader_running.store(false);
             break;
         }
-        buf.append(tmp, n);
+        buf.append(tmp, (size_t)n);
 
         // Process as many complete messages as possible
         for (;;) {
@@ -79,7 +79,7 @@ static void reader_thread_func(Debugger *dbg)
             size_t msg_end = msg_start + (size_t)content_length;
             if (buf.size() < msg_end) break;
 
-            std::string message = buf.substr(msg_start, content_length);
+            std::string message = buf.substr(msg_start, (size_t)content_length);
             buf.erase(0, msg_end);
 
             std::lock_guard<std::mutex> lock(dbg->queue_mutex);
@@ -159,7 +159,7 @@ static void toggle_breakpoint(Debugger *dbg, const std::string &path, int line)
     bp.line = line;
     SourceFile *sf = get_source(dbg, path);
     if (sf && line >= 1 && line <= (int)sf->lines.size()) {
-        bp.line_text = sf->lines[line - 1];
+        bp.line_text = sf->lines[(size_t)(line - 1)];
     }
     dbg->breakpoints.push_back(bp);
     if (dbg->state != DapState::IDLE && dbg->state != DapState::TERMINATED) {
@@ -211,7 +211,7 @@ static void relocate_breakpoints(Debugger *dbg, const std::string &path)
             int candidates[2] = {bp->line + delta, bp->line - delta};
             for (int c : candidates) {
                 if (c < min_line || c > num_lines) continue;
-                if (strip(sf->lines[c - 1]) == target) {
+                if (strip(sf->lines[(size_t)(c - 1)]) == target) {
                     best = c;
                     goto found;
                 }
@@ -929,7 +929,7 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
             }
             ImGui::SameLine();
 
-            auto tokens = tokenize_cmake(sf->lines[i]);
+            auto tokens = tokenize_cmake(sf->lines[(size_t)i]);
             if (tokens.empty()) {
                 ImGui::TextUnformatted("");
             } else {
@@ -1016,7 +1016,7 @@ static void render_stack(Debugger *dbg)
     }
 
     for (int i = 0; i < (int)dbg->stack.size(); i++) {
-        auto &f = dbg->stack[i];
+        auto &f = dbg->stack[(size_t)i];
         char label[512];
         snprintf(label, sizeof(label), "%s%s  %s:%d",
                  i == 0 ? "> " : "  ",
@@ -1039,7 +1039,7 @@ static void render_stack(Debugger *dbg)
 // Emit variable rows into an already-open table (recursive)
 // Read-only InputText that fills the column width.
 // Safe to const_cast: ImGui never writes back in ReadOnly mode.
-static void selectable_text(const char *label, const char *text, int len)
+static void selectable_text(const char *label, const char *text, size_t len)
 {
     ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0, 0, 0, 0));
     ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0, 0, 0, 0));
@@ -1062,7 +1062,7 @@ static void render_variable_rows(Debugger *dbg, std::vector<DapVariable> &vars)
                                               : v.value.c_str();
             ImGui::PushStyleColor(ImGuiCol_Text,
                 ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-            selectable_text("##val", val, (int)strlen(val));
+            selectable_text("##val", val, strlen(val));
             ImGui::PopStyleColor();
             if (open) {
                 if (!v.fetched && v.children.empty()) {
@@ -1084,7 +1084,7 @@ static void render_variable_rows(Debugger *dbg, std::vector<DapVariable> &vars)
             ImGui::TableNextColumn();
             ImGui::PushStyleColor(ImGuiCol_Text,
                 ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-            selectable_text("##val", v.value.c_str(), (int)v.value.size());
+            selectable_text("##val", v.value.c_str(), v.value.size());
             ImGui::PopStyleColor();
             if (open) {
                 size_t idx = 0;
@@ -1099,7 +1099,7 @@ static void render_variable_rows(Debugger *dbg, std::vector<DapVariable> &vars)
                     ImGui::TableNextColumn();
                     ImGui::BulletText("[%zu]", idx++);
                     ImGui::TableNextColumn();
-                    selectable_text("##val", item.c_str(), (int)item.size());
+                    selectable_text("##val", item.c_str(), item.size());
                     ImGui::PopID();
                     if (semi == std::string::npos) break;
                     start = semi + 1;
@@ -1111,9 +1111,9 @@ static void render_variable_rows(Debugger *dbg, std::vector<DapVariable> &vars)
             ImGui::TableNextColumn();
             ImGui::Bullet();
             ImGui::SameLine();
-            selectable_text("##name", v.name.c_str(), (int)v.name.size());
+            selectable_text("##name", v.name.c_str(), v.name.size());
             ImGui::TableNextColumn();
-            selectable_text("##val", v.value.c_str(), (int)v.value.size());
+            selectable_text("##val", v.value.c_str(), v.value.size());
         }
         ImGui::PopID();
     }
@@ -1261,7 +1261,7 @@ static void render_breakpoints_panel(Debugger *dbg)
 
     int remove_idx = -1;
     for (int i = 0; i < (int)dbg->breakpoints.size(); i++) {
-        auto &bp = dbg->breakpoints[i];
+        auto &bp = dbg->breakpoints[(size_t)i];
         ImGui::PushID(i);
 
         // Extract filename from path
@@ -1287,7 +1287,7 @@ static void render_breakpoints_panel(Debugger *dbg)
     }
 
     if (remove_idx >= 0) {
-        std::string path = dbg->breakpoints[remove_idx].path;
+        std::string path = dbg->breakpoints[(size_t)remove_idx].path;
         dbg->breakpoints.erase(dbg->breakpoints.begin() + remove_idx);
         if (dbg->state != DapState::IDLE &&
             dbg->state != DapState::TERMINATED) {
@@ -1352,7 +1352,6 @@ static void render_ui(Debugger *dbg)
 
     // Toolbar window (fixed at top, not dockable)
     ImGuiViewport *vp = ImGui::GetMainViewport();
-    float menu_h = ImGui::GetFrameHeight();
     ImGui::SetNextWindowPos(ImVec2(vp->WorkPos.x, vp->WorkPos.y));
     ImGui::SetNextWindowSize(ImVec2(vp->WorkSize.x, 0));
     ImGui::Begin("##Toolbar", nullptr,
