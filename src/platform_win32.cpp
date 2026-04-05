@@ -83,10 +83,13 @@ static int win32_stdout_read(void *ctx, char *buf, int len)
 
 static void win32_stdout_shutdown(void *ctx)
 {
+    // Don't CloseHandle here -- it blocks while another thread is in
+    // ReadFile on the same handle.  Instead, kill the cmake process tree
+    // so the write end of the pipe closes, which unblocks ReadFile.
+    // platform_cleanup closes the handle after the thread is joined.
     auto *p = (Win32Platform *)ctx;
-    if (p->stdout_handle != INVALID_HANDLE_VALUE) {
-        CloseHandle(p->stdout_handle);
-        p->stdout_handle = INVALID_HANDLE_VALUE;
+    if (p->job != INVALID_HANDLE_VALUE) {
+        TerminateJobObject(p->job, 1);
     }
 }
 
