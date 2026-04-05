@@ -334,6 +334,7 @@ int main()
             io.IniFilename = dbg.ini_path.c_str();
         }
     }
+    dcmake_load_config(&dbg);
 
     bool done = false;
     while (!done && !dbg.want_quit) {

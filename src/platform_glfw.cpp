@@ -245,6 +245,7 @@ int main(int argc, char **argv)
         dbg.ini_path += "/imgui.ini";
         io.IniFilename = dbg.ini_path.c_str();
     }
+    dcmake_load_config(&dbg);
 
     while (!glfwWindowShouldClose(window) && !dbg.want_quit) {
         glfwPollEvents();

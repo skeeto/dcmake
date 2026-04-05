@@ -127,6 +127,7 @@ std::string platform_open_file_dialog();
 
 // Shared logic called by the platform main loop.
 void dcmake_init(Debugger *dbg);
+void dcmake_load_config(Debugger *dbg);
 void dcmake_start(Debugger *dbg);
 void dcmake_stop(Debugger *dbg);
 void dcmake_frame(Debugger *dbg);

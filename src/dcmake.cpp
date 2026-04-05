@@ -952,6 +952,7 @@ static void render_sources(Debugger *dbg)
 
 static void render_stack(Debugger *dbg)
 {
+    if (!dbg->show_stack) return;
     if (!ImGui::Begin("Call Stack", &dbg->show_stack)) {
         ImGui::End();
         return;
@@ -1087,6 +1088,7 @@ static DapVariable *find_scope_child(Debugger *dbg, const char *name)
 
 static void render_locals(Debugger *dbg)
 {
+    if (!dbg->show_locals) return;
     if (!ImGui::Begin("Locals", &dbg->show_locals)) {
         ImGui::End();
         return;
@@ -1117,6 +1119,7 @@ static void render_locals(Debugger *dbg)
 
 static void render_cache(Debugger *dbg)
 {
+    if (!dbg->show_cache) return;
     if (!ImGui::Begin("Cache Variables", &dbg->show_cache)) {
         ImGui::End();
         return;
@@ -1167,6 +1170,7 @@ static void render_targets(Debugger *dbg)
 
 static void render_tests(Debugger *dbg)
 {
+    if (!dbg->show_tests) return;
     if (!ImGui::Begin("Tests", &dbg->show_tests)) {
         ImGui::End();
         return;
@@ -1192,6 +1196,7 @@ static void render_tests(Debugger *dbg)
 
 static void render_breakpoints_panel(Debugger *dbg)
 {
+    if (!dbg->show_breakpoints) return;
     if (!ImGui::Begin("Breakpoints", &dbg->show_breakpoints)) {
         ImGui::End();
         return;
@@ -1238,6 +1243,7 @@ static void render_breakpoints_panel(Debugger *dbg)
 
 static void render_filters_panel(Debugger *dbg)
 {
+    if (!dbg->show_filters) return;
     if (!ImGui::Begin("Exception Filters", &dbg->show_filters)) {
         ImGui::End();
         return;
@@ -1361,6 +1367,52 @@ static void render_ui(Debugger *dbg)
     render_filters_panel(dbg);
 }
 
+// --- Config persistence ---
+
+static std::string config_path(Debugger *dbg)
+{
+    // Derive from ini_path: replace "imgui.ini" with "dcmake.ini"
+    std::string path = dbg->ini_path;
+    auto pos = path.rfind("imgui.ini");
+    if (pos != std::string::npos) {
+        path.replace(pos, 9, "dcmake.ini");
+    }
+    return path;
+}
+
+static void save_config(Debugger *dbg)
+{
+    std::ofstream f(config_path(dbg));
+    if (!f) return;
+    f << "show_stack=" << dbg->show_stack << "\n";
+    f << "show_locals=" << dbg->show_locals << "\n";
+    f << "show_cache=" << dbg->show_cache << "\n";
+    f << "show_targets=" << dbg->show_targets << "\n";
+    f << "show_tests=" << dbg->show_tests << "\n";
+    f << "show_breakpoints=" << dbg->show_breakpoints << "\n";
+    f << "show_filters=" << dbg->show_filters << "\n";
+}
+
+void dcmake_load_config(Debugger *dbg)
+{
+    std::ifstream f(config_path(dbg));
+    if (!f) return;
+    std::string line;
+    while (std::getline(f, line)) {
+        auto eq = line.find('=');
+        if (eq == std::string::npos) continue;
+        std::string key = line.substr(0, eq);
+        bool val = line.substr(eq + 1) == "1";
+        if (key == "show_stack") dbg->show_stack = val;
+        else if (key == "show_locals") dbg->show_locals = val;
+        else if (key == "show_cache") dbg->show_cache = val;
+        else if (key == "show_targets") dbg->show_targets = val;
+        else if (key == "show_tests") dbg->show_tests = val;
+        else if (key == "show_breakpoints") dbg->show_breakpoints = val;
+        else if (key == "show_filters") dbg->show_filters = val;
+    }
+}
+
 // --- Lifecycle ---
 
 void dcmake_init(Debugger *dbg)
@@ -1443,6 +1495,8 @@ void dcmake_frame(Debugger *dbg)
 
 void dcmake_shutdown(Debugger *dbg)
 {
+    save_config(dbg);
+
     // Send disconnect if still connected
     if (dbg->pipe_write && dbg->state != DapState::TERMINATED &&
         dbg->state != DapState::IDLE) {
