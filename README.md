@@ -15,6 +15,27 @@ On any platform:
 
 On Linux you may need to install `xorg-dev` or similar first.
 
+By default dependencies are downloaded automatically. Source releases
+bundle dependencies in `deps/` for offline builds. Distribution
+packagers can use system libraries instead:
+
+    $ cmake -B build -DDEPS=LOCAL
+
+The `DEPS` variable controls how nlohmann/json and GLFW are resolved:
+
+| Value | Behavior |
+|-------|----------|
+| `AUTO` (default) | bundled → downloaded → local |
+| `DOWNLOAD` | bundled → downloaded |
+| `LOCAL` | system `find_package` only |
+
+Dear ImGui (docking branch) is always bundled or downloaded since no
+distributions package it.
+
+To bundle dependencies for a source release:
+
+    $ cmake -P cmake/BundleDeps.cmake
+
 ## Usage
 
     $ dcmake [cmake args..]
