@@ -963,28 +963,35 @@ static void render_stack(Debugger *dbg)
     ImGui::End();
 }
 
-// Render a variable tree (recursive for expandable variables)
-static void render_variable_tree(Debugger *dbg, std::vector<DapVariable> &vars)
+// Emit variable rows into an already-open table (recursive)
+static void render_variable_rows(Debugger *dbg, std::vector<DapVariable> &vars)
 {
     for (auto &v : vars) {
         if (v.variables_ref > 0) {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
             bool open = ImGui::TreeNode(v.name.c_str());
-            ImGui::SameLine(ImGui::GetContentRegionAvail().x * 0.5f);
+            ImGui::TableNextColumn();
             ImGui::TextDisabled("%s", v.value.empty() ? v.type.c_str()
                                                       : v.value.c_str());
             if (open) {
                 if (!v.fetched && v.children.empty()) {
                     fetch_variables(dbg, v.variables_ref);
                     v.fetched = true;
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn();
                     ImGui::TextDisabled("Loading...");
+                    ImGui::TableNextColumn();
                 } else {
-                    render_variable_tree(dbg, v.children);
+                    render_variable_rows(dbg, v.children);
                 }
                 ImGui::TreePop();
             }
         } else if (v.value.find(';') != std::string::npos) {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
             bool open = ImGui::TreeNode(v.name.c_str());
-            ImGui::SameLine(ImGui::GetContentRegionAvail().x * 0.5f);
+            ImGui::TableNextColumn();
             ImGui::TextDisabled("%s", v.value.c_str());
             if (open) {
                 size_t idx = 0;
@@ -993,8 +1000,10 @@ static void render_variable_tree(Debugger *dbg, std::vector<DapVariable> &vars)
                     size_t semi = v.value.find(';', start);
                     size_t end = (semi != std::string::npos) ? semi
                                                              : v.value.size();
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn();
                     ImGui::BulletText("[%zu]", idx++);
-                    ImGui::SameLine(ImGui::GetContentRegionAvail().x * 0.5f);
+                    ImGui::TableNextColumn();
                     ImGui::TextUnformatted(v.value.data() + start,
                                            v.value.data() + end);
                     if (semi == std::string::npos) break;
@@ -1003,10 +1012,25 @@ static void render_variable_tree(Debugger *dbg, std::vector<DapVariable> &vars)
                 ImGui::TreePop();
             }
         } else {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
             ImGui::BulletText("%s", v.name.c_str());
-            ImGui::SameLine(ImGui::GetContentRegionAvail().x * 0.5f);
+            ImGui::TableNextColumn();
             ImGui::TextUnformatted(v.value.c_str());
         }
+    }
+}
+
+// Render a variable tree with resizable name/value columns
+static void render_variable_tree(Debugger *dbg, std::vector<DapVariable> &vars)
+{
+    if (ImGui::BeginTable("##vars", 2,
+            ImGuiTableFlags_Resizable |
+            ImGuiTableFlags_BordersInnerV)) {
+        ImGui::TableSetupColumn("Name");
+        ImGui::TableSetupColumn("Value");
+        render_variable_rows(dbg, vars);
+        ImGui::EndTable();
     }
 }
 
