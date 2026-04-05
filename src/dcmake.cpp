@@ -967,9 +967,12 @@ static void render_stack(Debugger *dbg)
 // Safe to const_cast: ImGui never writes back in ReadOnly mode.
 static void selectable_text(const char *label, const char *text, int len)
 {
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0, 0, 0, 0));
+    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0, 0, 0, 0));
     ImGui::SetNextItemWidth(-FLT_MIN);
     ImGui::InputText(label, const_cast<char *>(text), len + 1,
                      ImGuiInputTextFlags_ReadOnly);
+    ImGui::PopStyleColor(2);
 }
 
 static void render_variable_rows(Debugger *dbg, std::vector<DapVariable> &vars)
