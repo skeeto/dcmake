@@ -259,6 +259,34 @@ void platform_cleanup(Debugger *dbg)
     dbg->platform = nullptr;
 }
 
+std::string platform_open_directory_dialog()
+{
+    std::string result;
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    IFileDialog *dialog = nullptr;
+    if (SUCCEEDED(CoCreateInstance(CLSID_FileOpenDialog, nullptr,
+                                   CLSCTX_INPROC_SERVER,
+                                   IID_PPV_ARGS(&dialog)))) {
+        DWORD options = 0;
+        dialog->GetOptions(&options);
+        dialog->SetOptions(options | FOS_PICKFOLDERS);
+        if (SUCCEEDED(dialog->Show(nullptr))) {
+            IShellItem *item = nullptr;
+            if (SUCCEEDED(dialog->GetResult(&item))) {
+                wchar_t *path = nullptr;
+                if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path))) {
+                    result = to_utf8(path);
+                    CoTaskMemFree(path);
+                }
+                item->Release();
+            }
+        }
+        dialog->Release();
+    }
+    CoUninitialize();
+    return result;
+}
+
 std::string platform_open_file_dialog()
 {
     wchar_t path[MAX_PATH] = {};

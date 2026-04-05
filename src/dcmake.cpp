@@ -7,6 +7,13 @@
 #include <fstream>
 #include <string_view>
 
+#ifdef _WIN32
+#include <direct.h>
+#define chdir _chdir
+#else
+#include <unistd.h>
+#endif
+
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <nlohmann/json.hpp>
@@ -1418,6 +1425,10 @@ static void render_ui(Debugger *dbg)
             if (ImGui::MenuItem("Open File...", "Ctrl+O")) {
                 std::string path = platform_open_file_dialog();
                 if (!path.empty()) open_source(dbg, path);
+            }
+            if (ImGui::MenuItem("Set Working Directory...")) {
+                std::string dir = platform_open_directory_dialog();
+                if (!dir.empty()) chdir(dir.c_str());
             }
             ImGui::EndMenu();
         }

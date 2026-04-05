@@ -228,6 +228,11 @@ std::string platform_open_file_dialog()
     return {};
 }
 
+std::string platform_open_directory_dialog()
+{
+    return {};
+}
+
 void platform_set_icon(void *)
 {
     // Linux: window icon set via .desktop file

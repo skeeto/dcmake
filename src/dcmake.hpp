@@ -134,6 +134,7 @@ std::string platform_quote_argv(int argc, char **argv);
 bool platform_launch(Debugger *dbg, const char *args);
 void platform_cleanup(Debugger *dbg);
 std::string platform_open_file_dialog();
+std::string platform_open_directory_dialog();
 void platform_set_icon(void *window);
 
 // Shared logic called by the platform main loop.
