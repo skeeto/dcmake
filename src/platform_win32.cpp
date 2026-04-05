@@ -329,6 +329,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
     wc.style = CS_CLASSDC;
     wc.lpfnWndProc = wnd_proc;
     wc.hInstance = hInstance;
+    wc.hIcon = LoadIconW(hInstance, MAKEINTRESOURCEW(1));
+    wc.hIconSm = LoadIconW(hInstance, MAKEINTRESOURCEW(1));
     wc.lpszClassName = L"dcmake";
     RegisterClassExW(&wc);
 
