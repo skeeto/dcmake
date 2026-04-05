@@ -244,6 +244,30 @@ bool platform_chdir(const char *path)
     return chdir(path) == 0;
 }
 
+std::string platform_read_file(const char *path)
+{
+    FILE *f = fopen(path, "rb");
+    if (!f) return {};
+    fseek(f, 0, SEEK_END);
+    long n = ftell(f);
+    if (n <= 0) { fclose(f); return {}; }
+    fseek(f, 0, SEEK_SET);
+    std::string out((size_t)n, '\0');
+    size_t got = fread(out.data(), 1, (size_t)n, f);
+    fclose(f);
+    out.resize(got);
+    return out;
+}
+
+bool platform_write_file(const char *path, const char *data, size_t len)
+{
+    FILE *f = fopen(path, "wb");
+    if (!f) return false;
+    size_t wrote = fwrite(data, 1, len, f);
+    fclose(f);
+    return wrote == len;
+}
+
 // --- GLFW + OpenGL3 entry point ---
 
 int main(int argc, char **argv)
@@ -299,7 +323,10 @@ int main(int argc, char **argv)
         dbg.ini_path += "/dcmake";
         mkdir(dbg.ini_path.c_str(), 0755);
         dbg.ini_path += "/imgui.ini";
-        io.IniFilename = dbg.ini_path.c_str();
+        io.IniFilename = nullptr;
+        std::string ini = platform_read_file(dbg.ini_path.c_str());
+        if (!ini.empty())
+            ImGui::LoadIniSettingsFromMemory(ini.data(), ini.size());
     }
     dcmake_load_config(&dbg);
 

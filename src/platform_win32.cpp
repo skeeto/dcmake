@@ -298,6 +298,37 @@ bool platform_chdir(const char *path)
     return SetCurrentDirectoryW(to_wide(path).c_str());
 }
 
+std::string platform_read_file(const char *path)
+{
+    HANDLE h = CreateFileW(to_wide(path).c_str(), GENERIC_READ,
+                           FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+                           FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return {};
+    LARGE_INTEGER size;
+    if (!GetFileSizeEx(h, &size) || size.QuadPart <= 0) {
+        CloseHandle(h);
+        return {};
+    }
+    std::string out((size_t)size.QuadPart, '\0');
+    DWORD got = 0;
+    ReadFile(h, out.data(), (DWORD)size.QuadPart, &got, nullptr);
+    CloseHandle(h);
+    out.resize(got);
+    return out;
+}
+
+bool platform_write_file(const char *path, const char *data, size_t len)
+{
+    HANDLE h = CreateFileW(to_wide(path).c_str(), GENERIC_WRITE,
+                           0, nullptr, CREATE_ALWAYS,
+                           FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return false;
+    DWORD wrote = 0;
+    WriteFile(h, data, (DWORD)len, &wrote, nullptr);
+    CloseHandle(h);
+    return wrote == (DWORD)len;
+}
+
 void platform_set_icon(void *)
 {
     // Icon set via .rc resource file
@@ -408,8 +439,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
             CreateDirectoryW(dir.c_str(), nullptr);
             dir += L"\\imgui.ini";
             dbg.ini_path = to_utf8(dir.c_str());
-            io.IniFilename = dbg.ini_path.c_str();
         }
+    }
+    io.IniFilename = nullptr;
+    {
+        std::string ini = platform_read_file(dbg.ini_path.c_str());
+        if (!ini.empty())
+            ImGui::LoadIniSettingsFromMemory(ini.data(), ini.size());
     }
     dcmake_load_config(&dbg);
 

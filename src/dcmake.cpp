@@ -4,7 +4,6 @@
 #include <charconv>
 #include <cstdio>
 #include <cstring>
-#include <fstream>
 #include <string_view>
 
 #include <imgui.h>
@@ -119,14 +118,21 @@ static SourceFile *get_source(Debugger *dbg, const std::string &path)
         if (sf.path == path) return &sf;
     }
 
-    std::ifstream f(path);
-    if (!f.is_open()) return nullptr;
+    std::string content = platform_read_file(path.c_str());
+    if (content.empty()) return nullptr;
 
     SourceFile sf;
     sf.path = path;
-    std::string line;
-    while (std::getline(f, line)) {
-        sf.lines.push_back(std::move(line));
+    size_t pos = 0;
+    while (pos < content.size()) {
+        size_t nl = content.find('\n', pos);
+        if (nl == std::string::npos) {
+            sf.lines.push_back(content.substr(pos));
+            break;
+        }
+        size_t end = (nl > pos && content[nl - 1] == '\r') ? nl - 1 : nl;
+        sf.lines.push_back(content.substr(pos, end - pos));
+        pos = nl + 1;
     }
     dbg->sources.push_back(std::move(sf));
     return &dbg->sources.back();
@@ -1581,33 +1587,42 @@ static std::string config_path(Debugger *dbg)
 
 static void save_config(Debugger *dbg)
 {
-    std::ofstream f(config_path(dbg));
-    if (!f) return;
-    f << "show_stack=" << dbg->show_stack << "\n";
-    f << "show_locals=" << dbg->show_locals << "\n";
-    f << "show_cache=" << dbg->show_cache << "\n";
-    f << "show_targets=" << dbg->show_targets << "\n";
-    f << "show_tests=" << dbg->show_tests << "\n";
-    f << "show_breakpoints=" << dbg->show_breakpoints << "\n";
-    f << "show_filters=" << dbg->show_filters << "\n";
-    f << "show_output=" << dbg->show_output << "\n";
+    std::string out;
+    out += "show_stack=";       out += dbg->show_stack ? '1' : '0';       out += '\n';
+    out += "show_locals=";      out += dbg->show_locals ? '1' : '0';      out += '\n';
+    out += "show_cache=";       out += dbg->show_cache ? '1' : '0';       out += '\n';
+    out += "show_targets=";     out += dbg->show_targets ? '1' : '0';     out += '\n';
+    out += "show_tests=";       out += dbg->show_tests ? '1' : '0';       out += '\n';
+    out += "show_breakpoints="; out += dbg->show_breakpoints ? '1' : '0'; out += '\n';
+    out += "show_filters=";     out += dbg->show_filters ? '1' : '0';     out += '\n';
+    out += "show_output=";      out += dbg->show_output ? '1' : '0';      out += '\n';
 
-    // Breakpoints: tab-separated path, line, enabled, line_text
     for (auto &bp : dbg->breakpoints) {
-        f << "bp\t" << bp.path << "\t" << bp.line << "\t"
-          << bp.enabled << "\t" << bp.line_text << "\n";
+        out += "bp\t";
+        out += bp.path;      out += '\t';
+        out += std::to_string(bp.line); out += '\t';
+        out += bp.enabled ? '1' : '0';  out += '\t';
+        out += bp.line_text; out += '\n';
     }
+
+    platform_write_file(config_path(dbg).c_str(), out.data(), out.size());
 }
 
 void dcmake_load_config(Debugger *dbg)
 {
-    std::ifstream f(config_path(dbg));
-    if (!f) return;
-    std::string line;
-    while (std::getline(f, line)) {
+    std::string content = platform_read_file(config_path(dbg).c_str());
+    if (content.empty()) return;
+
+    size_t pos = 0;
+    while (pos < content.size()) {
+        size_t nl = content.find('\n', pos);
+        size_t end = (nl == std::string::npos) ? content.size() : nl;
+        if (end > pos && content[end - 1] == '\r') end--;
+        std::string line = content.substr(pos, end - pos);
+        pos = (nl == std::string::npos) ? content.size() : nl + 1;
+
         if (line.starts_with("bp\t")) {
-            // Parse: bp\tpath\tline\tenabled\tline_text
-            size_t p1 = 3;  // skip "bp\t"
+            size_t p1 = 3;
             size_t p2 = line.find('\t', p1);
             if (p2 == std::string::npos) continue;
             size_t p3 = line.find('\t', p2 + 1);
@@ -1739,11 +1754,26 @@ void dcmake_frame(Debugger *dbg)
 {
     process_messages(dbg);
     render_ui(dbg);
+
+    ImGuiIO &io = ImGui::GetIO();
+    if (io.WantSaveIniSettings) {
+        io.WantSaveIniSettings = false;
+        size_t ini_size = 0;
+        const char *ini_data = ImGui::SaveIniSettingsToMemory(&ini_size);
+        platform_write_file(dbg->ini_path.c_str(), ini_data, ini_size);
+    }
 }
 
 void dcmake_shutdown(Debugger *dbg)
 {
     save_config(dbg);
+
+    // Force-save imgui.ini since IniFilename is null
+    {
+        size_t ini_size = 0;
+        const char *ini_data = ImGui::SaveIniSettingsToMemory(&ini_size);
+        platform_write_file(dbg->ini_path.c_str(), ini_data, ini_size);
+    }
 
     // Send disconnect if still connected
     if (dbg->pipe_write && dbg->state != DapState::TERMINATED &&
