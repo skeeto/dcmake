@@ -23,6 +23,16 @@ Where any arguments become CMake arguments in the debugger. The
 command line is editable from the UI and supports shell variable
 expansion (`$VAR` on Unix, `%VAR%` on Windows).
 
+## Shortcuts
+
+| Key | Action |
+|-----|--------|
+| F5 | Start (free-running) / Continue |
+| Shift+F5 | Stop |
+| F10 | Start (break at first line) / Step Over |
+| F11 | Start (break at first line) / Step In |
+| Shift+F11 | Step Out |
+
 ## Features
 
 * **CMake syntax highlighting** in source tabs with keywords, strings,
@@ -47,16 +57,6 @@ expansion (`$VAR` on Unix, `%VAR%` on Windows).
 * **Set Working Directory** from the File menu with native directory picker;
   current directory shown in the title bar
 * **Global keyboard shortcuts** work regardless of which widget has focus
-
-## Shortcuts
-
-| Key | Action |
-|-----|--------|
-| F5 | Start (free-running) / Continue |
-| Shift+F5 | Stop |
-| F10 | Start (break at first line) / Step Over |
-| F11 | Start (break at first line) / Step In |
-| Shift+F11 | Step Out |
 
 ## Configuration
 
