@@ -864,6 +864,8 @@ static std::vector<Token> tokenize_cmake(std::string_view line)
     return tokens;
 }
 
+static DapVariable *find_variable_by_name(Debugger *dbg, std::string_view name);
+
 static void render_source_content(Debugger *dbg, SourceFile *sf,
                                    int highlight_line, bool scroll_to)
 {
@@ -929,6 +931,7 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
             }
             ImGui::SameLine();
 
+            bool stopped = dbg->state == DapState::STOPPED;
             auto tokens = tokenize_cmake(sf->lines[(size_t)i]);
             if (tokens.empty()) {
                 ImGui::TextUnformatted("");
@@ -940,6 +943,22 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
                                            tokens[t].text.data() +
                                            tokens[t].text.size());
                     ImGui::PopStyleColor();
+                    // Variable hover tooltip
+                    if (stopped && tokens[t].type == TokenType::DEFAULT &&
+                        ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+                        std::string_view word = tokens[t].text;
+                        DapVariable *var = find_variable_by_name(dbg, word);
+                        if (var) {
+                            ImGui::BeginTooltip();
+                            if (var->value.empty())
+                                ImGui::Text("%s : %s",
+                                    var->name.c_str(), var->type.c_str());
+                            else
+                                ImGui::Text("%s = %s",
+                                    var->name.c_str(), var->value.c_str());
+                            ImGui::EndTooltip();
+                        }
+                    }
                     if (t + 1 < tokens.size())
                         ImGui::SameLine(0, 0);
                 }
@@ -1137,6 +1156,20 @@ static DapVariable *find_scope_child(Debugger *dbg, const char *name)
 {
     for (auto &scope : dbg->scopes) {
         for (auto &v : scope.variables) {
+            if (v.name == name) return &v;
+        }
+    }
+    return nullptr;
+}
+
+// Look up a variable by name in locals then cache (for hover tooltips)
+static DapVariable *find_variable_by_name(Debugger *dbg, std::string_view name)
+{
+    static const char *scope_names[] = {"Locals", "CacheVariables"};
+    for (auto *sn : scope_names) {
+        DapVariable *scope = find_scope_child(dbg, sn);
+        if (!scope) continue;
+        for (auto &v : scope->children) {
             if (v.name == name) return &v;
         }
     }
