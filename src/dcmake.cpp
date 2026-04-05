@@ -948,7 +948,7 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
     }
 
     if (scroll_to && highlight_line > 0) {
-        float target_y = (highlight_line - 1) * line_height;
+        float target_y = (float)(highlight_line - 1) * line_height;
         float window_h = ImGui::GetWindowHeight();
         ImGui::SetScrollY(target_y - window_h / 2.0f);
     }
