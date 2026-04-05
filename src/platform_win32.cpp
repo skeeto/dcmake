@@ -418,6 +418,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
         }
         if (done) break;
 
+        if (dbg.title_dirty) {
+            dbg.title_dirty = false;
+            wchar_t cwd[MAX_PATH];
+            if (GetCurrentDirectoryW(MAX_PATH, cwd)) {
+                std::wstring title = L"dcmake - ";
+                title += cwd;
+                SetWindowTextW(hwnd, title.c_str());
+            }
+        }
+
         ImGui_ImplDX11_NewFrame();
         ImGui_ImplWin32_NewFrame();
         ImGui::NewFrame();

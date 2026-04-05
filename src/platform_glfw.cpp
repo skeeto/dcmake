@@ -301,6 +301,15 @@ int main(int argc, char **argv)
     while (!glfwWindowShouldClose(window) && !dbg.want_quit) {
         glfwPollEvents();
 
+        if (dbg.title_dirty) {
+            dbg.title_dirty = false;
+            char cwd[1024];
+            if (getcwd(cwd, sizeof(cwd))) {
+                std::string title = std::string("dcmake - ") + cwd;
+                glfwSetWindowTitle(window, title.c_str());
+            }
+        }
+
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();

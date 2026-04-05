@@ -121,6 +121,7 @@ struct Debugger {
     char filter_tests[256] = {};
     std::string status;
     bool want_quit = false;
+    bool title_dirty = true;
     bool first_layout = true;
     bool show_stack = true;
     bool show_locals = true;
