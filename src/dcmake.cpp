@@ -7,13 +7,6 @@
 #include <fstream>
 #include <string_view>
 
-#ifdef _WIN32
-#include <direct.h>
-#define chdir _chdir
-#else
-#include <unistd.h>
-#endif
-
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <nlohmann/json.hpp>
@@ -1476,7 +1469,7 @@ static void render_ui(Debugger *dbg)
             if (ImGui::MenuItem("Set Working Directory...")) {
                 std::string dir = platform_open_directory_dialog();
                 if (!dir.empty()) {
-                    chdir(dir.c_str());
+                    platform_chdir(dir.c_str());
                     dbg->title_dirty = true;
                 }
             }

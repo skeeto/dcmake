@@ -239,6 +239,11 @@ void platform_set_icon(void *)
 }
 #endif
 
+bool platform_chdir(const char *path)
+{
+    return chdir(path) == 0;
+}
+
 // --- GLFW + OpenGL3 entry point ---
 
 int main(int argc, char **argv)

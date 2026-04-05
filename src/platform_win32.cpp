@@ -293,6 +293,11 @@ std::string platform_open_file_dialog()
     return {};
 }
 
+bool platform_chdir(const char *path)
+{
+    return SetCurrentDirectoryW(to_wide(path).c_str());
+}
+
 void platform_set_icon(void *)
 {
     // Icon set via .rc resource file
