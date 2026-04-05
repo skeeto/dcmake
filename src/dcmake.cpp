@@ -1457,6 +1457,8 @@ static void render_output(Debugger *dbg)
 
 static void render_ui(Debugger *dbg)
 {
+    static bool show_about = false;
+
     // Keyboard shortcuts (global, skip when typing)
     ImGuiIO &menu_io = ImGui::GetIO();
     bool ctrl = menu_io.KeyCtrl;
@@ -1492,7 +1494,27 @@ static void render_ui(Debugger *dbg)
             ImGui::MenuItem("Output", nullptr, &dbg->show_output);
             ImGui::EndMenu();
         }
+        if (ImGui::BeginMenu("Help")) {
+            if (ImGui::MenuItem("About"))
+                show_about = true;
+            ImGui::EndMenu();
+        }
         ImGui::EndMainMenuBar();
+    }
+
+    if (show_about) {
+        ImGui::OpenPopup("About dcmake");
+        show_about = false;
+    }
+    if (ImGui::BeginPopupModal("About dcmake", nullptr,
+                               ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::Text("dcmake: CMake Debugger");
+        ImGui::Text("Version %s", DCMAKE_VERSION);
+        ImGui::TextLinkOpenURL("https://github.com/skeeto/dcmake");
+        ImGui::Spacing();
+        if (ImGui::Button("OK", ImVec2(120, 0)))
+            ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
     }
 
     // Toolbar window (fixed at top, not dockable)
