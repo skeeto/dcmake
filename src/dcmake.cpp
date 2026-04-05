@@ -1044,9 +1044,13 @@ static void render_sources(Debugger *dbg)
 
         if (!ImGui::Begin(win_id, &os.open,
                           ImGuiWindowFlags_NoSavedSettings)) {
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                ImGui::SetTooltip("%s", os.path.c_str());
             ImGui::End();
             continue;
         }
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+            ImGui::SetTooltip("%s", os.path.c_str());
 
         ImGuiID dock_id = ImGui::GetWindowDockID();
         if (dock_id) dbg->source_dock_id = dock_id;
@@ -1393,6 +1397,8 @@ static void render_breakpoints_panel(Debugger *dbg)
                 send_breakpoints_for_file(dbg, bp.path);
             }
         }
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+            ImGui::SetTooltip("%s:%d", bp.path.c_str(), bp.line);
         ImGui::SameLine();
         if (ImGui::SmallButton("X")) {
             remove_idx = i;
