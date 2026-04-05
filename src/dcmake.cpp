@@ -492,7 +492,8 @@ static void render_toolbar(Debugger *dbg)
     if (!editable) {
         ImGui::BeginDisabled();
     }
-    ImGui::InputText("##cmdline", dbg->cmdline, sizeof(dbg->cmdline));
+    ImGui::InputTextWithHint("##cmdline", "(CMake arguments)", dbg->cmdline,
+                              sizeof(dbg->cmdline));
     if (!editable) {
         ImGui::EndDisabled();
     }

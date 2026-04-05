@@ -318,6 +318,7 @@ int main()
 
     Debugger dbg = {};
     std::string initial_args = platform_quote_argv(0, nullptr);
+    if (initial_args.empty()) initial_args = "-B build";
     snprintf(dbg.cmdline, sizeof(dbg.cmdline), "%s", initial_args.c_str());
     dcmake_init(&dbg);
 
