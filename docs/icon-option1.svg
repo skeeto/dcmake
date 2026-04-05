@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- CMake-style triangle with breakpoint dot -->
+  <!-- Dark background circle -->
+  <circle cx="128" cy="128" r="120" fill="#1a1a2e"/>
+
+  <!-- Green "play/build" triangle, slightly left of center -->
+  <polygon points="80,56 208,128 80,200" fill="#4caf50" opacity="0.9"/>
+
+  <!-- Red breakpoint dot, overlapping bottom-left -->
+  <circle cx="72" cy="192" r="32" fill="#e53935"/>
+</svg>

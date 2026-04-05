@@ -275,6 +275,11 @@ std::string platform_open_file_dialog()
     return {};
 }
 
+void platform_set_icon(void *)
+{
+    // Icon set via .rc resource file
+}
+
 // --- Win32 + DX11 entry point ---
 
 static ID3D11Device *g_device = nullptr;

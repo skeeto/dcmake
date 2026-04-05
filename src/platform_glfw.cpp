@@ -227,6 +227,11 @@ std::string platform_open_file_dialog()
 {
     return {};
 }
+
+void platform_set_icon(void *)
+{
+    // Linux: window icon set via .desktop file
+}
 #endif
 
 // --- GLFW + OpenGL3 entry point ---
@@ -252,6 +257,7 @@ int main(int argc, char **argv)
 
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);
+    platform_set_icon(window);
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
