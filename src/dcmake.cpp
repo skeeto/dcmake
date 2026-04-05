@@ -982,6 +982,26 @@ static void render_variable_tree(Debugger *dbg, std::vector<DapVariable> &vars)
                 }
                 ImGui::TreePop();
             }
+        } else if (v.value.find(';') != std::string::npos) {
+            bool open = ImGui::TreeNode(v.name.c_str());
+            ImGui::SameLine(ImGui::GetContentRegionAvail().x * 0.5f);
+            ImGui::TextDisabled("%s", v.value.c_str());
+            if (open) {
+                size_t idx = 0;
+                size_t start = 0;
+                for (;;) {
+                    size_t semi = v.value.find(';', start);
+                    size_t end = (semi != std::string::npos) ? semi
+                                                             : v.value.size();
+                    ImGui::BulletText("[%zu]", idx++);
+                    ImGui::SameLine(ImGui::GetContentRegionAvail().x * 0.5f);
+                    ImGui::TextUnformatted(v.value.data() + start,
+                                           v.value.data() + end);
+                    if (semi == std::string::npos) break;
+                    start = semi + 1;
+                }
+                ImGui::TreePop();
+            }
         } else {
             ImGui::BulletText("%s", v.name.c_str());
             ImGui::SameLine(ImGui::GetContentRegionAvail().x * 0.5f);
