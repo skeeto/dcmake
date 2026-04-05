@@ -2,6 +2,7 @@
 #include "dcmake.hpp"
 
 #include <windows.h>
+#include <commdlg.h>
 #include <shlobj.h>
 #include <d3d11.h>
 
@@ -210,6 +211,22 @@ void platform_cleanup(Debugger *dbg)
 
     delete p;
     dbg->platform = nullptr;
+}
+
+std::string platform_open_file_dialog()
+{
+    wchar_t path[MAX_PATH] = {};
+    OPENFILENAMEW ofn = {};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.lpstrFilter = L"All Files\0*.*\0";
+    ofn.lpstrFile = path;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+
+    if (GetOpenFileNameW(&ofn)) {
+        return to_utf8(path);
+    }
+    return {};
 }
 
 // --- Win32 + DX11 entry point ---

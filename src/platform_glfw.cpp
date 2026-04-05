@@ -182,6 +182,13 @@ void platform_cleanup(Debugger *dbg)
     dbg->platform = nullptr;
 }
 
+#ifndef __APPLE__
+std::string platform_open_file_dialog()
+{
+    return {};
+}
+#endif
+
 // --- GLFW + OpenGL3 entry point ---
 
 int main(int argc, char **argv)

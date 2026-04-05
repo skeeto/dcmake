@@ -162,6 +162,22 @@ static bool has_breakpoint(Debugger *dbg, const std::string &path, int line)
     return false;
 }
 
+// --- Source tab helpers ---
+
+static void open_source(Debugger *dbg, const std::string &path)
+{
+    for (auto &os : dbg->open_sources) {
+        if (os.path == path) {
+            os.focus = true;
+            return;
+        }
+    }
+    OpenSource os;
+    os.path = path;
+    os.focus = true;
+    dbg->open_sources.push_back(std::move(os));
+}
+
 // --- Variable fetch helpers ---
 
 static void fetch_variables(Debugger *dbg, int64_t ref)
@@ -232,6 +248,7 @@ static void handle_response(Debugger *dbg, const json &msg)
                 dbg->current_source = get_source(dbg, top.source_path);
                 dbg->current_line = top.line;
                 dbg->scroll_to_line = true;
+                open_source(dbg, top.source_path);
                 dbg->status = "Paused";
             }
             // Request scopes for top frame
@@ -561,92 +578,127 @@ static void render_toolbar(Debugger *dbg)
     }
 }
 
-static void render_source(Debugger *dbg)
+static void render_source_content(Debugger *dbg, SourceFile *sf,
+                                   int highlight_line, bool scroll_to)
 {
-    if (!ImGui::Begin("Source", &dbg->show_source)) {
-        ImGui::End();
-        return;
-    }
+    int line_count = (int)sf->lines.size();
+    float line_height = ImGui::GetTextLineHeightWithSpacing();
 
-    if (dbg->current_source && !dbg->current_source->lines.empty()) {
-        int line_count = (int)dbg->current_source->lines.size();
-        float line_height = ImGui::GetTextLineHeightWithSpacing();
+    int gutter_digits = 1;
+    for (int n = line_count; n >= 10; n /= 10) gutter_digits++;
 
-        int gutter_digits = 1;
-        for (int n = line_count; n >= 10; n /= 10) gutter_digits++;
+    char gutter_buf[16];
+    snprintf(gutter_buf, sizeof(gutter_buf), "%*d", gutter_digits, line_count);
+    float gutter_width = ImGui::CalcTextSize(gutter_buf).x;
 
-        // Measure gutter width for click detection
-        char gutter_buf[16];
-        snprintf(gutter_buf, sizeof(gutter_buf), "%*d", gutter_digits, line_count);
-        float gutter_width = ImGui::CalcTextSize(gutter_buf).x;
+    ImGuiListClipper clipper;
+    clipper.Begin(line_count);
+    while (clipper.Step()) {
+        for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++) {
+            int line_num = i + 1;
+            bool is_current = (line_num == highlight_line);
+            bool is_bp = has_breakpoint(dbg, sf->path, line_num);
 
-        ImGuiListClipper clipper;
-        clipper.Begin(line_count);
-        while (clipper.Step()) {
-            for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++) {
-                int line_num = i + 1;
-                bool is_current = (line_num == dbg->current_line);
-                bool is_bp = dbg->current_source &&
-                    has_breakpoint(dbg, dbg->current_source->path, line_num);
+            ImVec2 line_pos = ImGui::GetCursorScreenPos();
 
-                ImVec2 line_pos = ImGui::GetCursorScreenPos();
-
-                if (is_current) {
-                    float width = ImGui::GetContentRegionAvail().x +
-                                  ImGui::GetScrollX();
-                    ImGui::GetWindowDrawList()->AddRectFilled(
-                        line_pos,
-                        ImVec2(line_pos.x + width, line_pos.y + line_height),
-                        IM_COL32(80, 80, 30, 255));
-                }
-
-                // Breakpoint indicator (red circle in gutter)
-                if (is_bp) {
-                    float radius = line_height * 0.3f;
-                    ImVec2 center(line_pos.x + gutter_width * 0.5f,
-                                  line_pos.y + line_height * 0.5f);
-                    ImGui::GetWindowDrawList()->AddCircleFilled(
-                        center, radius, IM_COL32(220, 50, 50, 255));
-                }
-
-                ImGui::TextDisabled("%*d", gutter_digits, line_num);
-
-                // Gutter click to toggle breakpoint
-                ImVec2 gutter_min = line_pos;
-                ImVec2 gutter_max(line_pos.x + gutter_width,
-                                  line_pos.y + line_height);
-                if (ImGui::IsMouseClicked(0) &&
-                    ImGui::IsMouseHoveringRect(gutter_min, gutter_max)) {
-                    toggle_breakpoint(dbg, dbg->current_source->path, line_num);
-                }
-
-                ImGui::SameLine();
-
-                if (is_current) {
-                    ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.2f, 1.0f), "->");
-                } else {
-                    ImGui::TextUnformatted("  ");
-                }
-                ImGui::SameLine();
-
-                ImGui::TextUnformatted(dbg->current_source->lines[i].c_str());
+            if (is_current) {
+                float width = ImGui::GetContentRegionAvail().x +
+                              ImGui::GetScrollX();
+                ImGui::GetWindowDrawList()->AddRectFilled(
+                    line_pos,
+                    ImVec2(line_pos.x + width, line_pos.y + line_height),
+                    IM_COL32(80, 80, 30, 255));
             }
-        }
 
-        if (dbg->scroll_to_line && dbg->current_line > 0) {
-            float target_y = (dbg->current_line - 1) * line_height;
-            float window_h = ImGui::GetWindowHeight();
-            ImGui::SetScrollY(target_y - window_h / 2.0f);
-            dbg->scroll_to_line = false;
+            if (is_bp) {
+                float radius = line_height * 0.3f;
+                ImVec2 center(line_pos.x + gutter_width * 0.5f,
+                              line_pos.y + line_height * 0.5f);
+                ImGui::GetWindowDrawList()->AddCircleFilled(
+                    center, radius, IM_COL32(220, 50, 50, 255));
+            }
+
+            ImGui::TextDisabled("%*d", gutter_digits, line_num);
+
+            ImVec2 gutter_min = line_pos;
+            ImVec2 gutter_max(line_pos.x + gutter_width,
+                              line_pos.y + line_height);
+            if (ImGui::IsMouseClicked(0) &&
+                ImGui::IsMouseHoveringRect(gutter_min, gutter_max)) {
+                toggle_breakpoint(dbg, sf->path, line_num);
+            }
+
+            ImGui::SameLine();
+
+            if (is_current) {
+                ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.2f, 1.0f), "->");
+            } else {
+                ImGui::TextUnformatted("  ");
+            }
+            ImGui::SameLine();
+
+            ImGui::TextUnformatted(sf->lines[i].c_str());
         }
-    } else if (dbg->state == DapState::IDLE || dbg->state == DapState::CONNECTING ||
-               dbg->state == DapState::INITIALIZING) {
-        ImGui::TextDisabled("Waiting for debugger connection...");
-    } else if (dbg->state == DapState::TERMINATED) {
-        ImGui::TextDisabled("Session ended.");
     }
 
-    ImGui::End();
+    if (scroll_to && highlight_line > 0) {
+        float target_y = (highlight_line - 1) * line_height;
+        float window_h = ImGui::GetWindowHeight();
+        ImGui::SetScrollY(target_y - window_h / 2.0f);
+    }
+}
+
+static void render_sources(Debugger *dbg)
+{
+    for (auto &os : dbg->open_sources) {
+        if (!os.open) continue;
+
+        SourceFile *sf = get_source(dbg, os.path);
+        if (!sf) continue;
+
+        const char *filename = os.path.c_str();
+        const char *slash = strrchr(filename, '/');
+        if (!slash) slash = strrchr(filename, '\\');
+        if (slash) filename = slash + 1;
+
+        char win_id[1024];
+        snprintf(win_id, sizeof(win_id), "%s###src_%s",
+                 filename, os.path.c_str());
+
+        if (os.needs_dock) {
+            ImGuiID target = dbg->source_dock_id ? dbg->source_dock_id
+                                                 : dbg->dockspace_id;
+            ImGui::SetNextWindowDockID(target, ImGuiCond_Always);
+            os.needs_dock = false;
+        }
+
+        if (os.focus) {
+            ImGui::SetNextWindowFocus();
+            os.focus = false;
+        }
+
+        if (!ImGui::Begin(win_id, &os.open,
+                          ImGuiWindowFlags_NoSavedSettings)) {
+            ImGui::End();
+            continue;
+        }
+
+        ImGuiID dock_id = ImGui::GetWindowDockID();
+        if (dock_id) dbg->source_dock_id = dock_id;
+
+        bool is_current_file = (dbg->current_source == sf);
+        int highlight_line = is_current_file ? dbg->current_line : 0;
+        bool scroll = is_current_file && dbg->scroll_to_line;
+
+        render_source_content(dbg, sf, highlight_line, scroll);
+
+        if (scroll) dbg->scroll_to_line = false;
+
+        ImGui::End();
+    }
+
+    std::erase_if(dbg->open_sources,
+                  [](const OpenSource &os) { return !os.open; });
 }
 
 static void render_stack(Debugger *dbg)
@@ -665,11 +717,11 @@ static void render_stack(Debugger *dbg)
                  f.source_path.c_str(),
                  f.line);
         if (ImGui::Selectable(label, i == 0)) {
-            // Click to navigate to that frame's source
             if (!f.source_path.empty()) {
                 dbg->current_source = get_source(dbg, f.source_path);
                 dbg->current_line = f.line;
                 dbg->scroll_to_line = true;
+                open_source(dbg, f.source_path);
             }
         }
     }
@@ -876,10 +928,26 @@ static void render_breakpoints_panel(Debugger *dbg)
 
 static void render_ui(Debugger *dbg)
 {
+    // Keyboard shortcuts (global, skip when typing)
+    ImGuiIO &menu_io = ImGui::GetIO();
+    if (!menu_io.WantTextInput) {
+        bool ctrl = menu_io.KeyCtrl;
+        if (ctrl && ImGui::IsKeyPressed(ImGuiKey_O)) {
+            std::string path = platform_open_file_dialog();
+            if (!path.empty()) open_source(dbg, path);
+        }
+    }
+
     // Main menu bar
     if (ImGui::BeginMainMenuBar()) {
+        if (ImGui::BeginMenu("File")) {
+            if (ImGui::MenuItem("Open File...", "Ctrl+O")) {
+                std::string path = platform_open_file_dialog();
+                if (!path.empty()) open_source(dbg, path);
+            }
+            ImGui::EndMenu();
+        }
         if (ImGui::BeginMenu("View")) {
-            ImGui::MenuItem("Source", nullptr, &dbg->show_source);
             ImGui::MenuItem("Call Stack", nullptr, &dbg->show_stack);
             ImGui::MenuItem("Locals", nullptr, &dbg->show_locals);
             ImGui::MenuItem("Cache Variables", nullptr, &dbg->show_cache);
@@ -921,7 +989,8 @@ static void render_ui(Debugger *dbg)
                  ImGuiWindowFlags_NoBringToFrontOnFocus |
                  ImGuiWindowFlags_NoDocking |
                  ImGuiWindowFlags_NoBackground);
-    ImGuiID dockspace_id = ImGui::GetID("DockSpace");
+    dbg->dockspace_id = ImGui::GetID("DockSpace");
+    ImGuiID dockspace_id = dbg->dockspace_id;
 
     // Set up default layout only if no saved layout exists
     if (dbg->first_layout && !ImGui::DockBuilderGetNode(dockspace_id)) {
@@ -938,7 +1007,7 @@ static void render_ui(Debugger *dbg)
         ImGui::DockBuilderSplitNode(bottom, ImGuiDir_Right, 0.5f,
                                     &bottom_right, &bottom);
 
-        ImGui::DockBuilderDockWindow("Source", center);
+        dbg->source_dock_id = center;
         ImGui::DockBuilderDockWindow("Call Stack", bottom);
         ImGui::DockBuilderDockWindow("Locals", bottom_right);
         ImGui::DockBuilderDockWindow("Breakpoints", bottom_right);
@@ -953,7 +1022,7 @@ static void render_ui(Debugger *dbg)
     ImGui::End();
 
     // Render all panels
-    render_source(dbg);
+    render_sources(dbg);
     render_stack(dbg);
     render_locals(dbg);
     render_cache(dbg);

@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.25)
-project(dcmake LANGUAGES CXX)
+if(APPLE)
+  project(dcmake LANGUAGES CXX OBJCXX)
+else()
+  project(dcmake LANGUAGES CXX)
+endif()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -52,13 +56,14 @@ if(NOT WIN32)
   )
   target_link_libraries(imgui PUBLIC glfw)
 
-  add_executable(dcmake src/dcmake.cpp src/platform_glfw.cpp)
-  target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json)
-
   if(APPLE)
-    target_link_libraries(dcmake PRIVATE "-framework OpenGL")
+    add_executable(dcmake src/dcmake.cpp src/platform_glfw.cpp
+                          src/filedialog_macos.mm)
+    target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json
+                          "-framework OpenGL" "-framework Cocoa")
   else()
-    target_link_libraries(dcmake PRIVATE GL)
+    add_executable(dcmake src/dcmake.cpp src/platform_glfw.cpp)
+    target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json GL)
   endif()
 else()
   target_sources(imgui PRIVATE
@@ -68,5 +73,5 @@ else()
   target_link_libraries(imgui PUBLIC d3d11 dxgi d3dcompiler dwmapi)
 
   add_executable(dcmake src/dcmake.cpp src/platform_win32.cpp)
-  target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json)
+  target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json comdlg32)
 endif()

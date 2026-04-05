@@ -46,6 +46,13 @@ struct DapScope {
     bool fetched = false;
 };
 
+struct OpenSource {
+    std::string path;
+    bool open = true;
+    bool focus = false;
+    bool needs_dock = true;
+};
+
 struct LineBreakpoint {
     std::string path;
     int line;
@@ -90,13 +97,17 @@ struct Debugger {
     std::vector<LineBreakpoint> breakpoints;
     std::vector<ExceptionFilter> exception_filters;
 
+    // Source tabs
+    std::vector<OpenSource> open_sources;
+    unsigned int source_dock_id = 0;
+    unsigned int dockspace_id = 0;
+
     // UI state
     std::string ini_path;
     char cmdline[4096] = {};
     std::string status;
     bool want_quit = false;
     bool first_layout = true;
-    bool show_source = true;
     bool show_stack = true;
     bool show_locals = true;
     bool show_cache = true;
@@ -109,6 +120,7 @@ struct Debugger {
 std::string platform_quote_argv(int argc, char **argv);
 bool platform_launch(Debugger *dbg, const char *args);
 void platform_cleanup(Debugger *dbg);
+std::string platform_open_file_dialog();
 
 // Shared logic called by the platform main loop.
 void dcmake_init(Debugger *dbg);
