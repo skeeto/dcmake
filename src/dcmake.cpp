@@ -113,16 +113,23 @@ static SourceFile *get_source(Debugger *dbg, const std::string &path)
 
 static void send_breakpoints_for_file(Debugger *dbg, const std::string &path)
 {
+    // Clear id/verified on disabled breakpoints so stale IDs can't match events
     json bp_array = json::array();
     for (auto &bp : dbg->breakpoints) {
-        if (bp.path == path) {
+        if (bp.path != path) continue;
+        if (bp.enabled) {
             bp_array.push_back({{"line", bp.line}});
+        } else {
+            bp.id = 0;
+            bp.verified = false;
         }
     }
+    int seq = dbg->next_seq;
     dap_request(dbg, "setBreakpoints", {
         {"source", {{"path", path}}},
         {"breakpoints", bp_array},
     });
+    dbg->pending_bps[seq] = path;
 }
 
 static void send_exception_breakpoints(Debugger *dbg)
@@ -156,12 +163,14 @@ static void toggle_breakpoint(Debugger *dbg, const std::string &path, int line)
     }
 }
 
-static bool has_breakpoint(Debugger *dbg, const std::string &path, int line)
+// Returns: 0 = no breakpoint, 1 = enabled, 2 = disabled
+static int has_breakpoint(Debugger *dbg, const std::string &path, int line)
 {
     for (auto &bp : dbg->breakpoints) {
-        if (bp.path == path && bp.line == line) return true;
+        if (bp.path == path && bp.line == line)
+            return bp.enabled ? 1 : 2;
     }
-    return false;
+    return 0;
 }
 
 // --- Source tab helpers ---
@@ -307,26 +316,27 @@ static void handle_response(Debugger *dbg, const json &msg)
             }
         }
     } else if (command == "setBreakpoints") {
-        // Update breakpoint IDs and verified status
-        if (msg.contains("body") && msg["body"].contains("breakpoints")) {
-            // The response breakpoints correspond to the breakpoints we sent,
-            // matched by source path from the original request.
-            // Since we can't easily correlate, update all breakpoints with
-            // matching source from the response.
-            for (auto &rbp : msg["body"]["breakpoints"]) {
-                std::string path;
-                if (rbp.contains("source") && rbp["source"].contains("path")) {
-                    path = rbp["source"]["path"];
-                }
-                int line = rbp.value("line", 0);
-                int id = rbp.value("id", 0);
-                bool verified = rbp.value("verified", false);
-                for (auto &bp : dbg->breakpoints) {
-                    if (bp.path == path && bp.line == line) {
-                        bp.id = id;
-                        bp.verified = verified;
-                    }
-                }
+        // Response breakpoints are positional: response[i] corresponds to the
+        // i-th enabled breakpoint we sent for that file.
+        int req_seq = msg.value("request_seq", 0);
+        auto it = dbg->pending_bps.find(req_seq);
+        if (it != dbg->pending_bps.end() &&
+            msg.contains("body") && msg["body"].contains("breakpoints")) {
+            std::string path = it->second;
+            dbg->pending_bps.erase(it);
+
+            // Collect pointers to enabled breakpoints for this file (same
+            // order as they were sent in send_breakpoints_for_file).
+            std::vector<LineBreakpoint *> sent;
+            for (auto &bp : dbg->breakpoints) {
+                if (bp.path == path && bp.enabled) sent.push_back(&bp);
+            }
+            auto &resp = msg["body"]["breakpoints"];
+            for (size_t i = 0; i < resp.size() && i < sent.size(); i++) {
+                sent[i]->id = resp[i].value("id", 0);
+                sent[i]->verified = resp[i].value("verified", false);
+                int line = resp[i].value("line", 0);
+                if (line > 0) sent[i]->line = line;
             }
         }
     } else if (command == "continue" || command == "next" ||
@@ -384,7 +394,7 @@ static void handle_event(Debugger *dbg, const json &msg)
             bool verified = rbp.value("verified", false);
             int line = rbp.value("line", 0);
             for (auto &bp : dbg->breakpoints) {
-                if (bp.id == id) {
+                if (id != 0 && bp.id == id) {
                     bp.verified = verified;
                     if (line > 0) bp.line = line;
                 }
@@ -816,7 +826,7 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
         for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++) {
             int line_num = i + 1;
             bool is_current = (line_num == highlight_line);
-            bool is_bp = has_breakpoint(dbg, sf->path, line_num);
+            int bp_state = has_breakpoint(dbg, sf->path, line_num);
 
             ImVec2 line_pos = ImGui::GetCursorScreenPos();
 
@@ -829,11 +839,17 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
                     IM_COL32(80, 80, 30, 255));
             }
 
-            if (is_bp) {
+            if (bp_state == 1) {
                 float radius = line_height * 0.3f;
                 ImVec2 center(line_pos.x + gutter_width * 0.5f,
                               line_pos.y + line_height * 0.5f);
                 ImGui::GetWindowDrawList()->AddCircleFilled(
+                    center, radius, IM_COL32(220, 50, 50, 255));
+            } else if (bp_state == 2) {
+                float radius = line_height * 0.3f;
+                ImVec2 center(line_pos.x + gutter_width * 0.5f,
+                              line_pos.y + line_height * 0.5f);
+                ImGui::GetWindowDrawList()->AddCircle(
                     center, radius, IM_COL32(220, 50, 50, 255));
             }
 
@@ -1181,20 +1197,6 @@ static void render_breakpoints_panel(Debugger *dbg)
         return;
     }
 
-    // Exception filters
-    ImGui::TextDisabled("Exception Filters");
-    for (auto &ef : dbg->exception_filters) {
-        if (ImGui::Checkbox(ef.label.c_str(), &ef.enabled)) {
-            if (dbg->state != DapState::IDLE &&
-                dbg->state != DapState::TERMINATED) {
-                send_exception_breakpoints(dbg);
-            }
-        }
-    }
-
-    ImGui::Separator();
-    ImGui::TextDisabled("Line Breakpoints");
-
     int remove_idx = -1;
     for (int i = 0; i < (int)dbg->breakpoints.size(); i++) {
         auto &bp = dbg->breakpoints[i];
@@ -1206,9 +1208,15 @@ static void render_breakpoints_panel(Debugger *dbg)
         if (!slash) slash = strrchr(filename, '\\');
         if (slash) filename = slash + 1;
 
-        ImGui::Text("%s %s:%d",
-                    bp.verified ? "*" : "?",
-                    filename, bp.line);
+        char label[512];
+        snprintf(label, sizeof(label), "%s %s:%d",
+                 bp.verified ? "*" : "?", filename, bp.line);
+        if (ImGui::Checkbox(label, &bp.enabled)) {
+            if (dbg->state != DapState::IDLE &&
+                dbg->state != DapState::TERMINATED) {
+                send_breakpoints_for_file(dbg, bp.path);
+            }
+        }
         ImGui::SameLine();
         if (ImGui::SmallButton("X")) {
             remove_idx = i;
@@ -1222,6 +1230,25 @@ static void render_breakpoints_panel(Debugger *dbg)
         if (dbg->state != DapState::IDLE &&
             dbg->state != DapState::TERMINATED) {
             send_breakpoints_for_file(dbg, path);
+        }
+    }
+
+    ImGui::End();
+}
+
+static void render_filters_panel(Debugger *dbg)
+{
+    if (!ImGui::Begin("Exception Filters", &dbg->show_filters)) {
+        ImGui::End();
+        return;
+    }
+
+    for (auto &ef : dbg->exception_filters) {
+        if (ImGui::Checkbox(ef.label.c_str(), &ef.enabled)) {
+            if (dbg->state != DapState::IDLE &&
+                dbg->state != DapState::TERMINATED) {
+                send_exception_breakpoints(dbg);
+            }
         }
     }
 
@@ -1254,6 +1281,7 @@ static void render_ui(Debugger *dbg)
             ImGui::MenuItem("Targets", nullptr, &dbg->show_targets);
             ImGui::MenuItem("Tests", nullptr, &dbg->show_tests);
             ImGui::MenuItem("Breakpoints", nullptr, &dbg->show_breakpoints);
+            ImGui::MenuItem("Exception Filters", nullptr, &dbg->show_filters);
             ImGui::EndMenu();
         }
         ImGui::EndMainMenuBar();
@@ -1311,6 +1339,7 @@ static void render_ui(Debugger *dbg)
         ImGui::DockBuilderDockWindow("Call Stack", bottom);
         ImGui::DockBuilderDockWindow("Locals", bottom_right);
         ImGui::DockBuilderDockWindow("Breakpoints", bottom_right);
+        ImGui::DockBuilderDockWindow("Exception Filters", bottom_right);
         ImGui::DockBuilderDockWindow("Cache Variables", bottom_right);
         ImGui::DockBuilderDockWindow("Targets", bottom_right);
         ImGui::DockBuilderDockWindow("Tests", bottom_right);
@@ -1329,6 +1358,7 @@ static void render_ui(Debugger *dbg)
     render_targets(dbg);
     render_tests(dbg);
     render_breakpoints_panel(dbg);
+    render_filters_panel(dbg);
 }
 
 // --- Lifecycle ---

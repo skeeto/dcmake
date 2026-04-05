@@ -58,6 +58,7 @@ struct LineBreakpoint {
     int line;
     int id = 0;
     bool verified = false;
+    bool enabled = true;
 };
 
 struct ExceptionFilter {
@@ -96,6 +97,7 @@ struct Debugger {
     // Breakpoints
     std::vector<LineBreakpoint> breakpoints;
     std::vector<ExceptionFilter> exception_filters;
+    std::unordered_map<int, std::string> pending_bps;  // request seq → file path
 
     // Source tabs
     std::vector<OpenSource> open_sources;
@@ -114,6 +116,7 @@ struct Debugger {
     bool show_targets = true;
     bool show_tests = true;
     bool show_breakpoints = true;
+    bool show_filters = true;
 };
 
 // Platform layer must implement these.
