@@ -1,0 +1,39 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install mingw-w64
+        run: sudo apt-get update && sudo apt-get install -y mingw-w64
+
+      - name: Build source tarball
+        run: cmake -P cmake/SourceRelease.cmake
+
+      - name: Cross-compile dcmake.exe
+        run: |
+          cmake -B build \
+            -DCMAKE_TOOLCHAIN_FILE=cmake/x86_64-w64-mingw32.cmake \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+          x86_64-w64-mingw32-strip build/dcmake.exe
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$VERSION" \
+            dcmake-${VERSION}.tar.gz \
+            build/dcmake.exe
