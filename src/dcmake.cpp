@@ -486,6 +486,8 @@ static void handle_event(Debugger *dbg, const json &msg)
         }
     } else if (event == "terminated") {
         dbg->state = DapState::TERMINATED;
+        dbg->current_source = nullptr;
+        dbg->current_line = 0;
         dbg->status = "Stopped";
         dap_request(dbg, "disconnect");
     } else if (event == "exited") {
@@ -1827,6 +1829,8 @@ void dcmake_stop(Debugger *dbg)
     dbg->stdout_shutdown = nullptr;
 
     dbg->state = DapState::IDLE;
+    dbg->current_source = nullptr;
+    dbg->current_line = 0;
     dbg->status = "Stopped";
 }
 
