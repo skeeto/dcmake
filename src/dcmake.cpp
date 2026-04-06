@@ -589,6 +589,11 @@ static void render_toolbar(Debugger *dbg)
             dbg->status = "Running";
         }
     }
+    if (ImGui::IsKeyPressed(ImGuiKey_F9)) {
+        if (dbg->current_source && dbg->current_line) {
+            toggle_breakpoint(dbg, dbg->current_source->path, dbg->current_line);
+        }
+    }
 
     // Command line text box
     float avail_w = ImGui::GetContentRegionAvail().x;

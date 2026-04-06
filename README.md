@@ -65,6 +65,7 @@ Then press F10 to begin stepping from the first line of the script.
 | F10 | Start (break at first line) / Step Over |
 | F11 | Start (break at first line) / Step In |
 | Shift+F11 | Step Out |
+| F9 | Toggle breakpoint on current line |
 
 ## Features
 
