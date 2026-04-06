@@ -104,6 +104,8 @@ struct Debugger {
 
     // Breakpoints
     std::vector<LineBreakpoint> breakpoints;
+    std::string run_to_path;  // temporary invisible breakpoint for "Run to line"
+    int run_to_line = 0;
     std::vector<ExceptionFilter> exception_filters;
     std::unordered_map<int, std::string> pending_bps;  // request seq → file path
 

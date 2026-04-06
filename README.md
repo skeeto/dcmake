@@ -69,6 +69,9 @@ Then press F10 to begin stepping from the first line of the script.
 
 ## Features
 
+* Run to line: right-click a source line and select "Run to line" to
+  continue execution up to that line
+
 * Variable hover tooltips: hover over a variable name in the source view
   to see its current value
 

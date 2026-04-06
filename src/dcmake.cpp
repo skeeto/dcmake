@@ -153,6 +153,9 @@ static void send_breakpoints_for_file(Debugger *dbg, const std::string &path)
             bp.verified = false;
         }
     }
+    if (dbg->run_to_path == path && dbg->run_to_line > 0) {
+        bp_array.push_back({{"line", dbg->run_to_line}});
+    }
     int seq = dbg->next_seq;
     dap_request(dbg, "setBreakpoints", {
         {"source", {{"path", path}}},
@@ -449,6 +452,13 @@ static void handle_event(Debugger *dbg, const json &msg)
             }
             if (!found) files.push_back(bp.path);
         }
+        if (dbg->run_to_line && !dbg->run_to_path.empty()) {
+            bool found = false;
+            for (auto &f : files) {
+                if (f == dbg->run_to_path) { found = true; break; }
+            }
+            if (!found) files.push_back(dbg->run_to_path);
+        }
         for (auto &f : files) {
             relocate_breakpoints(dbg, f);
             send_breakpoints_for_file(dbg, f);
@@ -468,6 +478,12 @@ static void handle_event(Debugger *dbg, const json &msg)
             dbg->status = "Paused (" + reason + ")";
 
         dap_request(dbg, "stackTrace", {{"threadId", dbg->thread_id}});
+
+        if (dbg->run_to_line) {
+            std::string path = std::move(dbg->run_to_path);
+            dbg->run_to_line = 0;
+            send_breakpoints_for_file(dbg, path);
+        }
     } else if (event == "terminated") {
         dbg->state = DapState::TERMINATED;
         dbg->status = "Stopped";
@@ -923,6 +939,8 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
     snprintf(gutter_buf, sizeof(gutter_buf), "%*d", gutter_digits, line_count);
     float gutter_width = ImGui::CalcTextSize(gutter_buf).x;
 
+    static int context_menu_line = 0;
+
     ImGuiListClipper clipper;
     clipper.Begin(line_count);
     while (clipper.Step()) {
@@ -964,6 +982,15 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
             if (ImGui::IsMouseClicked(0) &&
                 ImGui::IsMouseHoveringRect(gutter_min, gutter_max)) {
                 toggle_breakpoint(dbg, sf->path, line_num);
+            }
+            float full_width = ImGui::GetContentRegionAvail().x +
+                               ImGui::GetScrollX();
+            ImVec2 line_max(line_pos.x + full_width,
+                            line_pos.y + line_height);
+            if (ImGui::IsMouseClicked(1) &&
+                ImGui::IsMouseHoveringRect(line_pos, line_max)) {
+                context_menu_line = line_num;
+                ImGui::OpenPopup("source_context");
             }
 
             ImGui::SameLine();
@@ -1008,6 +1035,27 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
                 }
             }
         }
+    }
+
+    if (ImGui::BeginPopup("source_context")) {
+        bool stopped = dbg->state == DapState::STOPPED;
+        bool editable = dbg->state == DapState::IDLE ||
+                        dbg->state == DapState::TERMINATED;
+        if (ImGui::MenuItem("Run to line", nullptr, false,
+                            stopped || editable)) {
+            dbg->run_to_path = sf->path;
+            dbg->run_to_line = context_menu_line;
+            if (editable) {
+                dbg->pause_at_entry = false;
+                dcmake_start(dbg);
+            } else {
+                send_breakpoints_for_file(dbg, sf->path);
+                dap_request(dbg, "continue", {{"threadId", dbg->thread_id}});
+                dbg->state = DapState::RUNNING;
+                dbg->status = "Running";
+            }
+        }
+        ImGui::EndPopup();
     }
 
     if (scroll_to && highlight_line > 0) {
