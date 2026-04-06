@@ -46,9 +46,15 @@ dependencies into `deps/` in the working tree instead:
 
     $ dcmake [cmake args..]
 
-Where any arguments become CMake arguments in the debugger. The
-command line is editable from the UI and supports shell variable
-expansion (`$VAR` on Unix, `%VAR%` on Windows).
+Where all arguments become CMake arguments in the debugger. The command
+line is editable within UI and supports shell variable expansion (`$VAR`
+on Unix, `%VAR%` on Windows). The debugger can handle configuration (`-B`,
+`-S`) and scripts (`-P`). For example, to step through building a source
+release:
+
+    $ dcmake -P cmake/SourceRelease.cmake
+
+Then press F10 to begin stepping from the first line of the script.
 
 ## Shortcuts
 
@@ -62,28 +68,17 @@ expansion (`$VAR` on Unix, `%VAR%` on Windows).
 
 ## Features
 
-* **CMake syntax highlighting** in source tabs with keywords, strings,
-  variables, generator expressions, and comments color-coded
-* **Variable hover tooltips** — hover over a variable name in the source
-  view to see its current value
-* **Search filters** on variable panels (Locals, Cache Variables, Targets,
-  Tests) — case-insensitive substring match on name or value
-* **Semicolon-separated list unfolding** — CMake list values expand into
-  indexed sub-items in variable panels
-* **Breakpoint drift mitigation** — breakpoints track their line content
-  so they survive file edits between sessions
-* **Breakpoint enable/disable** — toggle breakpoints without removing them
-* **Output window** — captures cmake's stdout/stderr (build messages,
-  warnings, errors) with selectable text
-* **Stop reason in status bar** — shows why execution paused (step,
-  breakpoint, entry, etc.)
-* **Exception filter controls** — enable/disable cmake exception breakpoint
-  categories independently
-* **Persistent layout and state** — window positions, panel visibility,
-  and breakpoints are saved across sessions
-* **Set Working Directory** from the File menu with native directory picker;
-  current directory shown in the title bar
-* **Global keyboard shortcuts** work regardless of which widget has focus
+* Variable hover tooltips: hover over a variable name in the source view
+  to see its current value
+
+* Search filters: on variable panels (Locals, Cache Variables, Targets,
+  Tests); case-insensitive substring match on name or value
+
+* Breakpoint drift mitigation: breakpoints track their line content so
+  they survive file edits between runs
+
+* Persistent layout and state: window positions, panel visibility, and
+  breakpoints are saved across sessions
 
 ## Configuration
 
