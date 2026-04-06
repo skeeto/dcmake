@@ -1481,6 +1481,9 @@ static void render_ui(Debugger *dbg)
                     dbg->title_dirty = true;
                 }
             }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Exit", "Alt+F4"))
+                dbg->want_quit = true;
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("View")) {
