@@ -1465,6 +1465,8 @@ static void render_ui(Debugger *dbg)
     if (ctrl && ImGui::IsKeyPressed(ImGuiKey_O)) {
         std::string path = platform_open_file_dialog();
         if (!path.empty()) open_source(dbg, path);
+        ImGui::ClearActiveID();
+        menu_io.ClearInputKeys();
     }
 
     // Main menu bar
