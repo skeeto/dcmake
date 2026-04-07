@@ -1817,6 +1817,11 @@ static void save_config(Debugger *dbg)
     out += "show_breakpoints="; out += dbg->show_breakpoints ? '1' : '0'; out += '\n';
     out += "show_filters=";     out += dbg->show_filters ? '1' : '0';     out += '\n';
     out += "show_output=";      out += dbg->show_output ? '1' : '0';      out += '\n';
+    out += "win_x=";            out += std::to_string(dbg->win_x);        out += '\n';
+    out += "win_y=";            out += std::to_string(dbg->win_y);        out += '\n';
+    out += "win_w=";            out += std::to_string(dbg->win_w);        out += '\n';
+    out += "win_h=";            out += std::to_string(dbg->win_h);        out += '\n';
+    out += "win_maximized=";    out += dbg->win_maximized ? '1' : '0';    out += '\n';
 
     for (auto &bp : dbg->breakpoints) {
         out += "bp\t";
@@ -1831,6 +1836,13 @@ static void save_config(Debugger *dbg)
 
 void dcmake_load_config(Debugger *dbg)
 {
+    // Explicit defaults (Debugger dbg={} may zero-init instead of using DMIs)
+    dbg->win_x = -1;
+    dbg->win_y = -1;
+    dbg->win_w = 1280;
+    dbg->win_h = 720;
+    dbg->win_maximized = false;
+
     std::string content = platform_read_file(config_path(dbg).c_str());
     if (content.empty()) return;
 
@@ -1874,6 +1886,11 @@ void dcmake_load_config(Debugger *dbg)
         else if (key == "show_breakpoints") dbg->show_breakpoints = val;
         else if (key == "show_filters") dbg->show_filters = val;
         else if (key == "show_output") dbg->show_output = val;
+        else if (key == "win_x") dbg->win_x = std::atoi(line.c_str() + eq + 1);
+        else if (key == "win_y") dbg->win_y = std::atoi(line.c_str() + eq + 1);
+        else if (key == "win_w") dbg->win_w = std::atoi(line.c_str() + eq + 1);
+        else if (key == "win_h") dbg->win_h = std::atoi(line.c_str() + eq + 1);
+        else if (key == "win_maximized") dbg->win_maximized = val;
     }
 }
 

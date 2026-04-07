@@ -349,6 +349,9 @@ static void create_rtv()
     back_buffer->Release();
 }
 
+static WINDOWPLACEMENT g_last_placement = { sizeof(g_last_placement) };
+static RECT g_last_rect;
+
 static LRESULT CALLBACK wnd_proc(HWND hWnd, UINT msg,
                                   WPARAM wParam, LPARAM lParam)
 {
@@ -369,7 +372,14 @@ static LRESULT CALLBACK wnd_proc(HWND hWnd, UINT msg,
                 DXGI_FORMAT_UNKNOWN, 0);
             create_rtv();
         }
+        GetWindowPlacement(hWnd, &g_last_placement);
+        GetWindowRect(hWnd, &g_last_rect);
         return 0;
+    case WM_CLOSE:
+        // Capture placement while the window is still valid
+        GetWindowPlacement(hWnd, &g_last_placement);
+        GetWindowRect(hWnd, &g_last_rect);
+        break;
     case WM_DESTROY:
         PostQuitMessage(0);
         return 0;
@@ -390,10 +400,39 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
     wc.lpszClassName = L"dcmake";
     RegisterClassExW(&wc);
 
+    // Set up config directory and load dcmake config (need window geometry
+    // before creating the window).
+    Debugger dbg = {};
+    std::string initial_args = platform_quote_argv(0, nullptr);
+    if (initial_args.empty()) initial_args = "-B build";
+    snprintf(dbg.cmdline, sizeof(dbg.cmdline), "%s", initial_args.c_str());
+    {
+        wchar_t appdata[MAX_PATH];
+        if (SUCCEEDED(SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, appdata))) {
+            std::wstring dir = appdata;
+            dir += L"\\dcmake";
+            CreateDirectoryW(dir.c_str(), nullptr);
+            dir += L"\\imgui.ini";
+            dbg.ini_path = to_utf8(dir.c_str());
+        }
+    }
+    dcmake_load_config(&dbg);
+
+    // Center on primary monitor on first start
+    int init_x = dbg.win_x, init_y = dbg.win_y;
+    if (init_x < 0 || init_y < 0) {
+        MONITORINFO mi = { sizeof(mi) };
+        GetMonitorInfoW(MonitorFromPoint({0, 0}, MONITOR_DEFAULTTOPRIMARY), &mi);
+        int mw = mi.rcWork.right - mi.rcWork.left;
+        int mh = mi.rcWork.bottom - mi.rcWork.top;
+        init_x = mi.rcWork.left + (mw - dbg.win_w) / 2;
+        init_y = mi.rcWork.top + (mh - dbg.win_h) / 2;
+    }
+
     HWND hwnd = CreateWindowExW(
         0, L"dcmake", L"dcmake",
         WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT, CW_USEDEFAULT, 1280, 720,
+        init_x, init_y, dbg.win_w, dbg.win_h,
         nullptr, nullptr, hInstance, nullptr);
 
     // Create D3D11 device and swap chain
@@ -412,7 +451,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
         &sd, &g_swapchain, &g_device, nullptr, &g_context);
     create_rtv();
 
-    ShowWindow(hwnd, nCmdShow);
+    ShowWindow(hwnd, dbg.win_maximized ? SW_SHOWMAXIMIZED : nCmdShow);
     UpdateWindow(hwnd);
 
     IMGUI_CHECKVERSION();
@@ -426,30 +465,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
-    Debugger dbg = {};
-    std::string initial_args = platform_quote_argv(0, nullptr);
-    if (initial_args.empty()) initial_args = "-B build";
-    snprintf(dbg.cmdline, sizeof(dbg.cmdline), "%s", initial_args.c_str());
     dcmake_init(&dbg);
 
-    // Set up config directory for imgui.ini
-    {
-        wchar_t appdata[MAX_PATH];
-        if (SUCCEEDED(SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, appdata))) {
-            std::wstring dir = appdata;
-            dir += L"\\dcmake";
-            CreateDirectoryW(dir.c_str(), nullptr);
-            dir += L"\\imgui.ini";
-            dbg.ini_path = to_utf8(dir.c_str());
-        }
-    }
+    // Load ImGui layout
     io.IniFilename = nullptr;
     {
         std::string ini = platform_read_file(dbg.ini_path.c_str());
         if (!ini.empty())
             ImGui::LoadIniSettingsFromMemory(ini.data(), ini.size());
     }
-    dcmake_load_config(&dbg);
 
     bool done = false;
     while (!done && !dbg.want_quit) {
@@ -483,6 +507,19 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
         g_context->ClearRenderTargetView(g_rtv, clear_color);
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
         g_swapchain->Present(1, 0);
+    }
+
+    // Read window geometry captured in WM_CLOSE/WM_SIZE.  When fully
+    // maximized, save the restored rect so un-maximizing works.  Otherwise
+    // save the actual rect (preserves vertical maximize, snap, etc.).
+    {
+        dbg.win_maximized = (g_last_placement.showCmd == SW_SHOWMAXIMIZED);
+        RECT r = dbg.win_maximized ? g_last_placement.rcNormalPosition
+                                   : g_last_rect;
+        dbg.win_x = r.left;
+        dbg.win_y = r.top;
+        dbg.win_w = r.right - r.left;
+        dbg.win_h = r.bottom - r.top;
     }
 
     dcmake_shutdown(&dbg);

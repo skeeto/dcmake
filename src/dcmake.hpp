@@ -125,6 +125,11 @@ struct Debugger {
     char filter_targets[256] = {};
     char filter_tests[256] = {};
     std::string status;
+    int win_x = -1;           // -1 = use default position
+    int win_y = -1;
+    int win_w = 1280;
+    int win_h = 720;
+    bool win_maximized = false;
     bool want_quit = false;
     bool title_dirty = true;
     bool first_layout = true;

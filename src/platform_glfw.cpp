@@ -277,17 +277,54 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    // Set up config directory and load dcmake config (need window geometry
+    // before creating the window).
+    Debugger dbg = {};
+    std::string initial_args = platform_quote_argv(argc, argv);
+    if (initial_args.empty()) initial_args = "-B build";
+    snprintf(dbg.cmdline, sizeof(dbg.cmdline), "%s", initial_args.c_str());
+    {
+        const char *xdg = getenv("XDG_CONFIG_HOME");
+        if (xdg && *xdg) {
+            dbg.ini_path = xdg;
+        } else {
+            const char *home = getenv("HOME");
+            dbg.ini_path = home ? home : ".";
+            dbg.ini_path += "/.config";
+        }
+        dbg.ini_path += "/dcmake";
+        mkdir(dbg.ini_path.c_str(), 0755);
+        dbg.ini_path += "/imgui.ini";
+    }
+    dcmake_load_config(&dbg);
+
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
 
-    GLFWwindow *window = glfwCreateWindow(1280, 720, "dcmake", nullptr, nullptr);
+    GLFWwindow *window = glfwCreateWindow(dbg.win_w, dbg.win_h,
+                                          "dcmake", nullptr, nullptr);
     if (!window) {
         fprintf(stderr, "dcmake: failed to create window\n");
         glfwTerminate();
         return 1;
     }
+    if (dbg.win_x >= 0 && dbg.win_y >= 0) {
+        glfwSetWindowPos(window, dbg.win_x, dbg.win_y);
+    } else {
+        // Center on primary monitor on first start
+        GLFWmonitor *mon = glfwGetPrimaryMonitor();
+        if (mon) {
+            int mx, my, mw, mh;
+            glfwGetMonitorWorkarea(mon, &mx, &my, &mw, &mh);
+            glfwSetWindowPos(window,
+                             mx + (mw - dbg.win_w) / 2,
+                             my + (mh - dbg.win_h) / 2);
+        }
+    }
+    if (dbg.win_maximized)
+        glfwMaximizeWindow(window);
 
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);
@@ -304,31 +341,15 @@ int main(int argc, char **argv)
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
-    Debugger dbg = {};
-    std::string initial_args = platform_quote_argv(argc, argv);
-    if (initial_args.empty()) initial_args = "-B build";
-    snprintf(dbg.cmdline, sizeof(dbg.cmdline), "%s", initial_args.c_str());
     dcmake_init(&dbg);
 
-    // Set up config directory for imgui.ini
+    // Load ImGui layout
+    io.IniFilename = nullptr;
     {
-        const char *xdg = getenv("XDG_CONFIG_HOME");
-        if (xdg && *xdg) {
-            dbg.ini_path = xdg;
-        } else {
-            const char *home = getenv("HOME");
-            dbg.ini_path = home ? home : ".";
-            dbg.ini_path += "/.config";
-        }
-        dbg.ini_path += "/dcmake";
-        mkdir(dbg.ini_path.c_str(), 0755);
-        dbg.ini_path += "/imgui.ini";
-        io.IniFilename = nullptr;
         std::string ini = platform_read_file(dbg.ini_path.c_str());
         if (!ini.empty())
             ImGui::LoadIniSettingsFromMemory(ini.data(), ini.size());
     }
-    dcmake_load_config(&dbg);
 
     while (!glfwWindowShouldClose(window) && !dbg.want_quit) {
         glfwPollEvents();
@@ -357,6 +378,13 @@ int main(int argc, char **argv)
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
         glfwSwapBuffers(window);
+    }
+
+    // Capture window geometry before shutdown
+    dbg.win_maximized = glfwGetWindowAttrib(window, GLFW_MAXIMIZED);
+    if (!dbg.win_maximized) {
+        glfwGetWindowPos(window, &dbg.win_x, &dbg.win_y);
+        glfwGetWindowSize(window, &dbg.win_w, &dbg.win_h);
     }
 
     dcmake_shutdown(&dbg);
