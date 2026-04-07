@@ -144,5 +144,5 @@ endif()
 target_compile_definitions(dcmake PRIVATE DCMAKE_VERSION="${PROJECT_VERSION}")
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-  target_compile_options(dcmake PRIVATE -Wall -Wextra -Wconversion)
+  target_compile_options(dcmake PRIVATE -Wall -Wconversion)
 endif()
