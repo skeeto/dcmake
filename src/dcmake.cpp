@@ -1081,8 +1081,25 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
 
     static int context_menu_line = 0;
 
+    // Click detection: compute line from mouse position directly.
+    // Pass explicit line_height to the clipper so its layout matches.
+    ImVec2 content_origin = ImGui::GetCursorScreenPos();
+    ImVec2 mouse = ImGui::GetMousePos();
+    int mouse_line = (int)floorf((mouse.y - content_origin.y) / line_height) + 1;
+    bool mouse_in_gutter = mouse.x >= content_origin.x &&
+                           mouse.x < content_origin.x + gutter_width;
+    if (mouse_line >= 1 && mouse_line <= line_count &&
+        ImGui::IsWindowHovered()) {
+        if (ImGui::IsMouseClicked(0) && mouse_in_gutter)
+            toggle_breakpoint(dbg, sf->path, mouse_line);
+        if (ImGui::IsMouseClicked(1)) {
+            context_menu_line = mouse_line;
+            ImGui::OpenPopup("source_context");
+        }
+    }
+
     ImGuiListClipper clipper;
-    clipper.Begin(line_count);
+    clipper.Begin(line_count, line_height);
     while (clipper.Step()) {
         for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++) {
             int line_num = i + 1;
@@ -1115,23 +1132,6 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
             }
 
             ImGui::TextDisabled("%*d", gutter_digits, line_num);
-
-            ImVec2 gutter_min = line_pos;
-            ImVec2 gutter_max(line_pos.x + gutter_width,
-                              line_pos.y + line_height);
-            if (ImGui::IsMouseClicked(0) &&
-                ImGui::IsMouseHoveringRect(gutter_min, gutter_max)) {
-                toggle_breakpoint(dbg, sf->path, line_num);
-            }
-            float full_width = ImGui::GetContentRegionAvail().x +
-                               ImGui::GetScrollX();
-            ImVec2 line_max(line_pos.x + full_width,
-                            line_pos.y + line_height);
-            if (ImGui::IsMouseClicked(1) &&
-                ImGui::IsMouseHoveringRect(line_pos, line_max)) {
-                context_menu_line = line_num;
-                ImGui::OpenPopup("source_context");
-            }
 
             ImGui::SameLine();
 
@@ -1194,6 +1194,45 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
                 dbg->state = DapState::RUNNING;
                 dbg->status = "Running";
             }
+        }
+        ImGui::Separator();
+        int bp_state = has_breakpoint(dbg, sf->path, context_menu_line);
+        if (bp_state == 0) {
+            if (ImGui::MenuItem("Add Breakpoint"))
+                toggle_breakpoint(dbg, sf->path, context_menu_line);
+            ImGui::BeginDisabled();
+            ImGui::MenuItem("Disable Breakpoint");
+            ImGui::MenuItem("Remove Breakpoint");
+            ImGui::EndDisabled();
+        } else {
+            ImGui::MenuItem("Add Breakpoint", nullptr, false, false);
+            if (bp_state == 1) {
+                if (ImGui::MenuItem("Disable Breakpoint")) {
+                    for (auto &bp : dbg->breakpoints) {
+                        if (bp.path == sf->path && bp.line == context_menu_line) {
+                            bp.enabled = false;
+                            if (dbg->state != DapState::IDLE &&
+                                dbg->state != DapState::TERMINATED)
+                                send_breakpoints_for_file(dbg, sf->path);
+                            break;
+                        }
+                    }
+                }
+            } else {
+                if (ImGui::MenuItem("Enable Breakpoint")) {
+                    for (auto &bp : dbg->breakpoints) {
+                        if (bp.path == sf->path && bp.line == context_menu_line) {
+                            bp.enabled = true;
+                            if (dbg->state != DapState::IDLE &&
+                                dbg->state != DapState::TERMINATED)
+                                send_breakpoints_for_file(dbg, sf->path);
+                            break;
+                        }
+                    }
+                }
+            }
+            if (ImGui::MenuItem("Remove Breakpoint"))
+                toggle_breakpoint(dbg, sf->path, context_menu_line);
         }
         ImGui::EndPopup();
     }
@@ -1589,6 +1628,34 @@ static void render_breakpoints_panel(Debugger *dbg)
         ImGui::End();
         return;
     }
+
+    bool has_any = !dbg->breakpoints.empty();
+    bool running = dbg->state != DapState::IDLE &&
+                   dbg->state != DapState::TERMINATED;
+    ImGui::BeginDisabled(!has_any);
+    if (ImGui::SmallButton("Enable All")) {
+        for (auto &bp : dbg->breakpoints) bp.enabled = true;
+        if (running)
+            for (auto &bp : dbg->breakpoints)
+                send_breakpoints_for_file(dbg, bp.path);
+    }
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Disable All")) {
+        for (auto &bp : dbg->breakpoints) bp.enabled = false;
+        if (running)
+            for (auto &bp : dbg->breakpoints)
+                send_breakpoints_for_file(dbg, bp.path);
+    }
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Delete All")) {
+        std::vector<LineBreakpoint> old;
+        old.swap(dbg->breakpoints);
+        if (running)
+            for (auto &bp : old)
+                send_breakpoints_for_file(dbg, bp.path);
+    }
+    ImGui::EndDisabled();
+    ImGui::Separator();
 
     int remove_idx = -1;
     for (int i = 0; i < (int)dbg->breakpoints.size(); i++) {
