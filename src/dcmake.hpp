@@ -37,6 +37,7 @@ struct DapVariable {
     int64_t variables_ref = 0;
     std::vector<DapVariable> children;
     bool fetched = false;
+    bool changed = false;
 };
 
 struct DapScope {

@@ -310,6 +310,49 @@ static DapVariable *find_variable_by_ref(std::vector<DapVariable> &vars,
     return nullptr;
 }
 
+// Mark variables in `next` that are new or have a different value from `prev`.
+static void mark_changed_variables(std::vector<DapVariable> &prev,
+                                   std::vector<DapVariable> &next)
+{
+    // Build name→value lookup from old variables
+    std::unordered_map<std::string, std::string> old_vals;
+    for (auto &v : prev)
+        old_vals[v.name] = v.value;
+
+    for (auto &v : next) {
+        auto it = old_vals.find(v.name);
+        v.changed = (it == old_vals.end() || it->second != v.value);
+    }
+}
+
+static void mark_changed_scopes(std::vector<DapScope> &prev,
+                                std::vector<DapScope> &next)
+{
+    for (auto &ns : next) {
+        // Find matching old scope by name
+        DapScope *os = nullptr;
+        for (auto &s : prev) {
+            if (s.name == ns.name) { os = &s; break; }
+        }
+        if (os) {
+            mark_changed_variables(os->variables, ns.variables);
+            // Also mark children of matching variables
+            for (auto &nv : ns.variables) {
+                for (auto &ov : os->variables) {
+                    if (ov.name == nv.name) {
+                        mark_changed_variables(ov.children, nv.children);
+                        break;
+                    }
+                }
+            }
+        } else {
+            // Entirely new scope — mark everything changed
+            for (auto &v : ns.variables)
+                v.changed = true;
+        }
+    }
+}
+
 // --- DAP message handlers ---
 
 static void handle_response(Debugger *dbg, const json &msg)
@@ -416,8 +459,11 @@ static void handle_response(Debugger *dbg, const json &msg)
                                 dbg->pending_scope_reqs++;
                             }
                         }
-                        if (dbg->pending_scope_reqs == 0)
+                        if (dbg->pending_scope_reqs == 0) {
+                            mark_changed_scopes(dbg->scopes,
+                                                dbg->pending_scopes);
                             dbg->scopes = std::move(dbg->pending_scopes);
+                        }
                         goto matched;
                     }
                     DapVariable *target = find_variable_by_ref(
@@ -426,8 +472,11 @@ static void handle_response(Debugger *dbg, const json &msg)
                         target->children = std::move(parsed);
                         target->fetched = true;
                         dbg->pending_scope_reqs--;
-                        if (dbg->pending_scope_reqs == 0)
+                        if (dbg->pending_scope_reqs == 0) {
+                            mark_changed_scopes(dbg->scopes,
+                                                dbg->pending_scopes);
                             dbg->scopes = std::move(dbg->pending_scopes);
+                        }
                         goto matched;
                     }
                 }
@@ -1266,6 +1315,9 @@ static void render_variable_rows(Debugger *dbg, std::vector<DapVariable> &vars,
         ImGui::PushID(v.name.c_str());
         if (v.variables_ref > 0) {
             ImGui::TableNextRow();
+            if (v.changed)
+                ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0,
+                    ImGui::GetColorU32(ImVec4(0.4f, 0.4f, 0.1f, 0.35f)));
             ImGui::TableNextColumn();
             bool open = ImGui::TreeNode(v.name.c_str());
             ImGui::TableNextColumn();
@@ -1290,6 +1342,9 @@ static void render_variable_rows(Debugger *dbg, std::vector<DapVariable> &vars,
             }
         } else if (v.value.find(';') != std::string::npos) {
             ImGui::TableNextRow();
+            if (v.changed)
+                ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0,
+                    ImGui::GetColorU32(ImVec4(0.4f, 0.4f, 0.1f, 0.35f)));
             ImGui::TableNextColumn();
             bool open = ImGui::TreeNode(v.name.c_str());
             ImGui::TableNextColumn();
@@ -1319,6 +1374,9 @@ static void render_variable_rows(Debugger *dbg, std::vector<DapVariable> &vars,
             }
         } else {
             ImGui::TableNextRow();
+            if (v.changed)
+                ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0,
+                    ImGui::GetColorU32(ImVec4(0.4f, 0.4f, 0.1f, 0.35f)));
             ImGui::TableNextColumn();
             ImGui::Bullet();
             ImGui::SameLine();
