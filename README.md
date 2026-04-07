@@ -13,11 +13,15 @@ On any platform:
     $ cmake -B build
     $ cmake --build build
 
-On Linux you may need to install `xorg-dev` or similar first.
+Linux distributions may need `xorg-dev` or `libwayland-dev`. By default
+dependencies are downloaded automatically, currently:
 
-By default dependencies are downloaded automatically. Source releases
-bundle dependencies in `deps/` for offline builds. Distribution
-packagers can use system libraries instead:
+* [Dear ImGui][] ([docking branch][])
+* [nlohmann/json][]
+* [GLFW][] (except on Windows)
+
+Source releases bundle dependencies in `deps/` for offline builds.
+Distribution packagers can use system libraries instead:
 
     $ cmake -B build -DDEPS=LOCAL
 
@@ -29,18 +33,14 @@ The `DEPS` variable controls how nlohmann/json and GLFW are resolved:
 | `DOWNLOAD` | bundled → downloaded |
 | `LOCAL` | system `find_package` only |
 
-Dear ImGui (docking branch) is always bundled or downloaded since no
-distributions package it.
-
-To produce a source release tarball with bundled dependencies:
+Dear ImGui is always bundled or downloaded because no distributions
+package the docking branch. To produce a source release tarball with
+bundled dependencies:
 
     $ cmake -P cmake/SourceRelease.cmake
 
-This runs `git archive`, downloads dependencies into the tree, and
-produces a self-contained `dcmake-VERSION.tar.gz`. To bundle
-dependencies into `deps/` in the working tree instead:
-
-    $ cmake -P cmake/BundleDeps.cmake
+Which runs `git archive`, downloads dependencies into the tree, and
+produces a self-contained `dcmake-VERSION.tar.gz`.
 
 ## Usage
 
@@ -96,4 +96,8 @@ directory:
 
 
 [DAP]: https://microsoft.github.io/debug-adapter-protocol/
+[Dear ImGui]: https://github.com/ocornut/imgui
+[GLFW]: https://www.glfw.org/
 [doc]: https://cmake.org/cmake/help/latest/manual/cmake.1.html#cmdoption-cmake-debugger
+[docking branch]: https://github.com/ocornut/imgui/wiki/Docking
+[nlohmann/json]: https://json.nlohmann.me/
