@@ -100,6 +100,8 @@ struct Debugger {
 
     // Variable/scope data (refreshed each time we stop)
     std::vector<DapScope> scopes;
+    std::vector<DapScope> pending_scopes;  // buffered until variables arrive
+    int pending_scope_reqs = 0;            // outstanding variable requests
     std::unordered_map<int, int64_t> pending_vars;  // request seq → variablesReference
 
     // Breakpoints

@@ -364,9 +364,15 @@ static void handle_response(Debugger *dbg, const json &msg)
                 new_scopes.push_back(std::move(scope));
             }
         }
-        dbg->scopes = std::move(new_scopes);
-        for (auto &scope : dbg->scopes) {
-            fetch_variables(dbg, scope.variables_ref);
+        dbg->pending_scopes = std::move(new_scopes);
+        dbg->pending_scope_reqs = 0;
+        for (auto &scope : dbg->pending_scopes) {
+            if (scope.variables_ref > 0) {
+                fetch_variables(dbg, scope.variables_ref);
+                dbg->pending_scope_reqs++;
+            } else {
+                scope.fetched = true;
+            }
         }
     } else if (command == "variables") {
         // Look up which variablesReference this response is for via request_seq.
@@ -387,6 +393,36 @@ static void handle_response(Debugger *dbg, const json &msg)
                 parsed.push_back(std::move(dv));
             }
 
+            // Pending scopes: populate and swap when all levels are ready
+            if (!dbg->pending_scopes.empty()) {
+                for (auto &scope : dbg->pending_scopes) {
+                    if (scope.variables_ref == ref) {
+                        scope.variables = std::move(parsed);
+                        scope.fetched = true;
+                        dbg->pending_scope_reqs--;
+                        for (auto &v : scope.variables) {
+                            if (v.variables_ref > 0) {
+                                fetch_variables(dbg, v.variables_ref);
+                                dbg->pending_scope_reqs++;
+                            }
+                        }
+                        if (dbg->pending_scope_reqs == 0)
+                            dbg->scopes = std::move(dbg->pending_scopes);
+                        goto matched;
+                    }
+                    DapVariable *target = find_variable_by_ref(
+                        scope.variables, ref);
+                    if (target) {
+                        target->children = std::move(parsed);
+                        target->fetched = true;
+                        dbg->pending_scope_reqs--;
+                        if (dbg->pending_scope_reqs == 0)
+                            dbg->scopes = std::move(dbg->pending_scopes);
+                        goto matched;
+                    }
+                }
+            }
+
             // Match to scope or nested variable by variablesReference
             for (auto &scope : dbg->scopes) {
                 if (scope.variables_ref == ref) {
@@ -402,6 +438,7 @@ static void handle_response(Debugger *dbg, const json &msg)
                     break;
                 }
             }
+            matched:;
         }
     } else if (command == "setBreakpoints") {
         // Response breakpoints are positional: response[i] corresponds to the
@@ -1831,6 +1868,8 @@ void dcmake_stop(Debugger *dbg)
     dbg->state = DapState::IDLE;
     dbg->current_source = nullptr;
     dbg->current_line = 0;
+    dbg->pending_scopes.clear();
+    dbg->pending_scope_reqs = 0;
     dbg->status = "Stopped";
 }
 
