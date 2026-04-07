@@ -726,6 +726,8 @@ static void render_toolbar(Debugger *dbg)
 
     // Start/Continue button (F5)
     ImGui::SameLine();
+    ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
+    ImGui::SameLine();
     ImGui::BeginDisabled(!editable && !stopped);
     if (editable) {
         if (ImGui::Button(ICON_DEBUG_START)) {
@@ -803,7 +805,7 @@ static void render_toolbar(Debugger *dbg)
     ImGui::PopStyleVar();
 
     ImGui::SameLine();
-    ImGui::Text(" | ");
+    ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
     ImGui::SameLine();
     switch (dbg->state) {
     case DapState::CONNECTING:
