@@ -1654,7 +1654,9 @@ static void render_ui(Debugger *dbg)
     // Main menu bar
     if (ImGui::BeginMainMenuBar()) {
         if (ImGui::BeginMenu("File")) {
-            if (ImGui::MenuItem("Open File...", "Ctrl+O")) {
+            if (ImGui::MenuItem("Open File...",
+                                menu_io.ConfigMacOSXBehaviors ? "Cmd+O"
+                                                              : "Ctrl+O")) {
                 std::string path = platform_open_file_dialog();
                 if (!path.empty()) open_source(dbg, path);
             }
@@ -1666,7 +1668,9 @@ static void render_ui(Debugger *dbg)
                 }
             }
             ImGui::Separator();
-            if (ImGui::MenuItem("Exit", "Alt+F4"))
+            if (ImGui::MenuItem("Exit",
+                                menu_io.ConfigMacOSXBehaviors ? "Cmd+Q"
+                                                              : "Alt+F4"))
                 dbg->want_quit = true;
             ImGui::EndMenu();
         }
