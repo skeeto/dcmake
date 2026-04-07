@@ -1231,7 +1231,7 @@ static void render_variable_rows(Debugger *dbg, std::vector<DapVariable> &vars,
             if (!icontains(v.name, filter) && !icontains(v.value, filter))
                 continue;
         }
-        ImGui::PushID(&v);
+        ImGui::PushID(v.name.c_str());
         if (v.variables_ref > 0) {
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
