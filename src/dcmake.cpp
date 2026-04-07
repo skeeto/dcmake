@@ -16,6 +16,7 @@ using json = nlohmann::json;
 #define ICON_CODICON_MIN       0xEACF
 #define ICON_CODICON_MAX       0xEAD7
 #define ICON_DEBUG_CONTINUE    "\xee\xab\x8f"  // U+EACF
+#define ICON_DEBUG_RESTART     "\xee\xab\x92"  // U+EAD2
 #define ICON_DEBUG_START       "\xee\xab\x93"  // U+EAD3
 #define ICON_DEBUG_STEP_INTO   "\xee\xab\x94"  // U+EAD4
 #define ICON_DEBUG_STEP_OUT    "\xee\xab\x95"  // U+EAD5
@@ -666,7 +667,12 @@ static void render_toolbar(Debugger *dbg)
     // Global keyboard shortcuts (F-keys work regardless of focus, like VS)
     ImGuiIO &io = ImGui::GetIO();
     if (ImGui::IsKeyPressed(ImGuiKey_F5)) {
-        if (io.KeyShift) {
+        if (io.KeyCtrl && io.KeyShift) {
+            if (!idle) {
+                dcmake_stop(dbg);
+                dcmake_start(dbg);
+            }
+        } else if (io.KeyShift) {
             if (!idle) dcmake_stop(dbg);
         } else if (editable) {
             dbg->pause_at_entry = false;
@@ -758,6 +764,18 @@ static void render_toolbar(Debugger *dbg)
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort |
                              ImGuiHoveredFlags_AllowWhenDisabled))
         ImGui::SetTooltip("Stop (Shift+F5)");
+    ImGui::EndDisabled();
+
+    // Restart button (Ctrl+Shift+F5)
+    ImGui::SameLine();
+    ImGui::BeginDisabled(idle);
+    if (ImGui::Button(ICON_DEBUG_RESTART)) {
+        dcmake_stop(dbg);
+        dcmake_start(dbg);
+    }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort |
+                             ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip("Restart (Ctrl+Shift+F5)");
     ImGui::EndDisabled();
 
     // Step buttons — also start cmake from idle (with pause at entry)
