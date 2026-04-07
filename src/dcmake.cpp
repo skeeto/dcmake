@@ -1,4 +1,5 @@
 #include "dcmake.hpp"
+#include "icon_font.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -11,6 +12,15 @@
 #include <nlohmann/json.hpp>
 
 using json = nlohmann::json;
+
+#define ICON_CODICON_MIN       0xEACF
+#define ICON_CODICON_MAX       0xEAD7
+#define ICON_DEBUG_CONTINUE    "\xee\xab\x8f"  // U+EACF
+#define ICON_DEBUG_START       "\xee\xab\x93"  // U+EAD3
+#define ICON_DEBUG_STEP_INTO   "\xee\xab\x94"  // U+EAD4
+#define ICON_DEBUG_STEP_OUT    "\xee\xab\x95"  // U+EAD5
+#define ICON_DEBUG_STEP_OVER   "\xee\xab\x96"  // U+EAD6
+#define ICON_DEBUG_STOP        "\xee\xab\x97"  // U+EAD7
 
 // --- DAP wire protocol ---
 
@@ -651,6 +661,9 @@ static void render_toolbar(Debugger *dbg)
     }
 
     // Command line text box
+    ImVec2 default_padding = ImGui::GetStyle().FramePadding;
+    ImVec2 toolbar_padding(default_padding.x + 2, default_padding.y + 4);
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, toolbar_padding);
     float avail_w = ImGui::GetContentRegionAvail().x;
     ImGui::SetNextItemWidth(avail_w * 0.5f);
     if (!editable) {
@@ -666,31 +679,40 @@ static void render_toolbar(Debugger *dbg)
     ImGui::SameLine();
     ImGui::BeginDisabled(!editable && !stopped);
     if (editable) {
-        if (ImGui::Button("Start")) {
+        if (ImGui::Button(ICON_DEBUG_START)) {
             dbg->pause_at_entry = false;
             dcmake_start(dbg);
         }
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort |
+                                 ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip("Start (F5)");
     } else {
-        if (ImGui::Button("Continue")) {
+        if (ImGui::Button(ICON_DEBUG_CONTINUE)) {
             dap_request(dbg, "continue", {{"threadId", dbg->thread_id}});
             dbg->state = DapState::RUNNING;
             dbg->status = "Running";
         }
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort |
+                                 ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip("Continue (F5)");
     }
     ImGui::EndDisabled();
 
     // Stop button (Shift+F5)
     ImGui::SameLine();
     ImGui::BeginDisabled(idle);
-    if (ImGui::Button("Stop")) {
+    if (ImGui::Button(ICON_DEBUG_STOP)) {
         dcmake_stop(dbg);
     }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort |
+                             ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip("Stop (Shift+F5)");
     ImGui::EndDisabled();
 
     // Step buttons — also start cmake from idle (with pause at entry)
     ImGui::SameLine();
     ImGui::BeginDisabled(!stopped && !editable);
-    if (ImGui::Button("Step Over")) {
+    if (ImGui::Button(ICON_DEBUG_STEP_OVER)) {
         if (editable) {
             dbg->pause_at_entry = true;
             dcmake_start(dbg);
@@ -700,8 +722,11 @@ static void render_toolbar(Debugger *dbg)
             dbg->status = "Running";
         }
     }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort |
+                             ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip("Step Over (F10)");
     ImGui::SameLine();
-    if (ImGui::Button("Step In")) {
+    if (ImGui::Button(ICON_DEBUG_STEP_INTO)) {
         if (editable) {
             dbg->pause_at_entry = true;
             dcmake_start(dbg);
@@ -711,15 +736,22 @@ static void render_toolbar(Debugger *dbg)
             dbg->status = "Running";
         }
     }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort |
+                             ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip("Step In (F11)");
     ImGui::EndDisabled();
     ImGui::SameLine();
     ImGui::BeginDisabled(!stopped);
-    if (ImGui::Button("Step Out")) {
+    if (ImGui::Button(ICON_DEBUG_STEP_OUT)) {
         dap_request(dbg, "stepOut", {{"threadId", dbg->thread_id}});
         dbg->state = DapState::RUNNING;
         dbg->status = "Running";
     }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort |
+                             ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip("Step Out (Shift+F11)");
     ImGui::EndDisabled();
+    ImGui::PopStyleVar();
 
     ImGui::SameLine();
     ImGui::Text(" | ");
@@ -1779,6 +1811,17 @@ void dcmake_load_config(Debugger *dbg)
 
 void dcmake_init(Debugger *dbg)
 {
+    // Merge codicon icons into default font
+    ImGuiIO &io = ImGui::GetIO();
+    io.Fonts->AddFontDefault();
+    ImFontConfig cfg;
+    cfg.MergeMode = true;
+    cfg.GlyphOffset = ImVec2(0, 4);
+    static const ImWchar icon_ranges[] = { ICON_CODICON_MIN, ICON_CODICON_MAX, 0 };
+    io.Fonts->AddFontFromMemoryCompressedTTF(
+        icon_compressed_data, sizeof(icon_compressed_data),
+        14.0f, &cfg, icon_ranges);
+
     dbg->state = DapState::IDLE;
     dbg->status = "Ready";
 }
