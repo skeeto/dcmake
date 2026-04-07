@@ -135,10 +135,10 @@ bool platform_launch(Debugger *dbg, const char *args)
         return false;
     }
 
-    // Fork cmake subprocess via sh -c in its own process group
+    // Fork cmake subprocess via sh -c (same process group so ctrl-c
+    // reaches cmake even if dcmake dies without running cleanup).
     pid_t pid = fork();
     if (pid == 0) {
-        setpgid(0, 0);
         dup2(stdout_pipe[1], STDOUT_FILENO);
         dup2(stdout_pipe[1], STDERR_FILENO);
         close(stdout_pipe[0]);
@@ -211,9 +211,9 @@ void platform_cleanup(Debugger *dbg)
         unlink(p->pipe_path.c_str());
     }
 
-    // Kill cmake process group (sh + cmake + any children)
+    // Kill cmake (sh typically execs cmake, so this is the cmake process)
     if (p->cmake_pid > 0) {
-        kill(-p->cmake_pid, SIGTERM);
+        kill(p->cmake_pid, SIGTERM);
         waitpid(p->cmake_pid, nullptr, 0);
         p->cmake_pid = -1;
     }
