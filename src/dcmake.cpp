@@ -1439,24 +1439,27 @@ static void render_locals(Debugger *dbg)
     ImGui::InputTextWithHint("##filter", "Filter...",
                              dbg->filter_locals, sizeof(dbg->filter_locals));
 
-    if (dbg->state == DapState::STOPPED || dbg->state == DapState::RUNNING) {
-        DapVariable *locals = find_scope_child(dbg, "Locals");
-        if (locals) {
-            if (!locals->fetched && locals->children.empty()) {
-                fetch_variables(dbg, locals->variables_ref);
-                locals->fetched = true;
+    if (ImGui::BeginChild("##scroll")) {
+        if (dbg->state == DapState::STOPPED || dbg->state == DapState::RUNNING) {
+            DapVariable *locals = find_scope_child(dbg, "Locals");
+            if (locals) {
+                if (!locals->fetched && locals->children.empty()) {
+                    fetch_variables(dbg, locals->variables_ref);
+                    locals->fetched = true;
+                }
+                render_variable_tree(dbg, locals->children, dbg->filter_locals);
+            } else if (dbg->scopes.empty()) {
+                ImGui::TextDisabled("No scope data.");
+            } else {
+                for (auto &scope : dbg->scopes) {
+                    render_variable_tree(dbg, scope.variables, dbg->filter_locals);
+                }
             }
-            render_variable_tree(dbg, locals->children, dbg->filter_locals);
-        } else if (dbg->scopes.empty()) {
-            ImGui::TextDisabled("No scope data.");
         } else {
-            for (auto &scope : dbg->scopes) {
-                render_variable_tree(dbg, scope.variables, dbg->filter_locals);
-            }
+            ImGui::TextDisabled("Not stopped.");
         }
-    } else {
-        ImGui::TextDisabled("Not stopped.");
     }
+    ImGui::EndChild();
 
     ImGui::End();
 }
@@ -1473,20 +1476,23 @@ static void render_cache(Debugger *dbg)
     ImGui::InputTextWithHint("##filter", "Filter...",
                              dbg->filter_cache, sizeof(dbg->filter_cache));
 
-    if (dbg->state == DapState::STOPPED || dbg->state == DapState::RUNNING) {
-        DapVariable *cache = find_scope_child(dbg, "CacheVariables");
-        if (cache) {
-            if (!cache->fetched && cache->children.empty()) {
-                fetch_variables(dbg, cache->variables_ref);
-                cache->fetched = true;
+    if (ImGui::BeginChild("##scroll")) {
+        if (dbg->state == DapState::STOPPED || dbg->state == DapState::RUNNING) {
+            DapVariable *cache = find_scope_child(dbg, "CacheVariables");
+            if (cache) {
+                if (!cache->fetched && cache->children.empty()) {
+                    fetch_variables(dbg, cache->variables_ref);
+                    cache->fetched = true;
+                }
+                render_variable_tree(dbg, cache->children, dbg->filter_cache);
+            } else {
+                ImGui::TextDisabled("No cache data.");
             }
-            render_variable_tree(dbg, cache->children, dbg->filter_cache);
         } else {
-            ImGui::TextDisabled("No cache data.");
+            ImGui::TextDisabled("Not stopped.");
         }
-    } else {
-        ImGui::TextDisabled("Not stopped.");
     }
+    ImGui::EndChild();
 
     ImGui::End();
 }
@@ -1502,20 +1508,23 @@ static void render_targets(Debugger *dbg)
     ImGui::InputTextWithHint("##filter", "Filter...",
                              dbg->filter_targets, sizeof(dbg->filter_targets));
 
-    if (dbg->state == DapState::STOPPED || dbg->state == DapState::RUNNING) {
-        DapVariable *targets = find_scope_child(dbg, "Targets");
-        if (targets) {
-            if (!targets->fetched && targets->children.empty()) {
-                fetch_variables(dbg, targets->variables_ref);
-                targets->fetched = true;
+    if (ImGui::BeginChild("##scroll")) {
+        if (dbg->state == DapState::STOPPED || dbg->state == DapState::RUNNING) {
+            DapVariable *targets = find_scope_child(dbg, "Targets");
+            if (targets) {
+                if (!targets->fetched && targets->children.empty()) {
+                    fetch_variables(dbg, targets->variables_ref);
+                    targets->fetched = true;
+                }
+                render_variable_tree(dbg, targets->children, dbg->filter_targets);
+            } else {
+                ImGui::TextDisabled("No target data.");
             }
-            render_variable_tree(dbg, targets->children, dbg->filter_targets);
         } else {
-            ImGui::TextDisabled("No target data.");
+            ImGui::TextDisabled("Not stopped.");
         }
-    } else {
-        ImGui::TextDisabled("Not stopped.");
     }
+    ImGui::EndChild();
 
     ImGui::End();
 }
@@ -1532,20 +1541,23 @@ static void render_tests(Debugger *dbg)
     ImGui::InputTextWithHint("##filter", "Filter...",
                              dbg->filter_tests, sizeof(dbg->filter_tests));
 
-    if (dbg->state == DapState::STOPPED || dbg->state == DapState::RUNNING) {
-        DapVariable *tests = find_scope_child(dbg, "Tests");
-        if (tests) {
-            if (!tests->fetched && tests->children.empty()) {
-                fetch_variables(dbg, tests->variables_ref);
-                tests->fetched = true;
+    if (ImGui::BeginChild("##scroll")) {
+        if (dbg->state == DapState::STOPPED || dbg->state == DapState::RUNNING) {
+            DapVariable *tests = find_scope_child(dbg, "Tests");
+            if (tests) {
+                if (!tests->fetched && tests->children.empty()) {
+                    fetch_variables(dbg, tests->variables_ref);
+                    tests->fetched = true;
+                }
+                render_variable_tree(dbg, tests->children, dbg->filter_tests);
+            } else {
+                ImGui::TextDisabled("No test data.");
             }
-            render_variable_tree(dbg, tests->children, dbg->filter_tests);
         } else {
-            ImGui::TextDisabled("No test data.");
+            ImGui::TextDisabled("Not stopped.");
         }
-    } else {
-        ImGui::TextDisabled("Not stopped.");
     }
+    ImGui::EndChild();
 
     ImGui::End();
 }
