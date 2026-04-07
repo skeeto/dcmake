@@ -129,6 +129,7 @@ if(NOT WIN32)
     add_executable(dcmake src/dcmake.cpp src/platform_glfw.cpp)
     target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json GL)
   endif()
+  target_compile_definitions(dcmake PRIVATE DCMAKE_GLFW)
 else()
   target_sources(imgui PRIVATE
     ${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp

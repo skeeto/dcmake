@@ -1641,6 +1641,18 @@ static void render_ui(Debugger *dbg)
         ImGui::Text("Version %s", DCMAKE_VERSION);
         ImGui::TextLinkOpenURL("https://github.com/skeeto/dcmake");
         ImGui::Spacing();
+        ImGui::SeparatorText("Third-party licenses");
+        ImGui::BulletText(
+            "Dear ImGui -- Copyright (c) 2014-2026 Omar Cornut (MIT)");
+#ifdef DCMAKE_GLFW
+        ImGui::BulletText(
+            "GLFW -- Copyright (c) 2006-2019 Camilla Loewy (zlib/libpng)");
+#endif
+        ImGui::BulletText(
+            "nlohmann/json -- Copyright (c) 2013-2023 Niels Lohmann (MIT)");
+        ImGui::BulletText(
+            "Codicons -- Copyright (c) Microsoft Corporation (MIT)");
+        ImGui::Spacing();
         if (ImGui::Button("OK", ImVec2(120, 0)))
             ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
