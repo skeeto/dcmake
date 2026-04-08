@@ -351,6 +351,7 @@ static void create_rtv()
 
 static WINDOWPLACEMENT g_last_placement = { sizeof(g_last_placement) };
 static RECT g_last_rect;
+static HWND g_hwnd;
 
 static LRESULT CALLBACK wnd_proc(HWND hWnd, UINT msg,
                                   WPARAM wParam, LPARAM lParam)
@@ -434,6 +435,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
         WS_OVERLAPPEDWINDOW,
         init_x, init_y, dbg.win_w, dbg.win_h,
         nullptr, nullptr, hInstance, nullptr);
+    g_hwnd = hwnd;
 
     // Create D3D11 device and swap chain
     DXGI_SWAP_CHAIN_DESC sd = {};
@@ -475,6 +477,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
             ImGui::LoadIniSettingsFromMemory(ini.data(), ini.size());
     }
 
+    dbg.wake = [](void *) { PostMessageW(g_hwnd, WM_NULL, 0, 0); };
+
     bool done = false;
     while (!done && !dbg.want_quit) {
         MSG msg;
@@ -484,6 +488,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
             if (msg.message == WM_QUIT) done = true;
         }
         if (done) break;
+
+        if (!dbg.animating)
+            MsgWaitForMultipleObjects(0, nullptr, FALSE, INFINITE, QS_ALLINPUT);
 
         if (dbg.title_dirty) {
             dbg.title_dirty = false;
