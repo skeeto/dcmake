@@ -49,8 +49,6 @@ struct DapScope {
 
 struct WatchEntry {
     char buf[256] = {};
-    std::string display;
-    bool force_cache = false;
 };
 
 struct OpenSource {

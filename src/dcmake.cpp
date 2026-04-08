@@ -1721,61 +1721,52 @@ static DapVariable *find_variable_by_name(Debugger *dbg, std::string_view name)
     return find_cache_var(dbg, name);
 }
 
-static WatchEntry parse_watch_expr(const char *expr)
+// Expand CMake ${} and $CACHE{} references in a watch expression.
+// Bare names (no $) are handled separately in render_watch.
+static std::string expand_watch(Debugger *dbg, const char *expr)
 {
-    WatchEntry w;
-    snprintf(w.buf, sizeof(w.buf), "%s", expr);
-    // Check for $CACHE{NAME} syntax
-    if (strncmp(expr, "$CACHE{", 7) == 0) {
-        size_t len = strlen(expr);
-        if (len > 7 && expr[len - 1] == '}') {
-            w.force_cache = true;
-            w.display = std::string(expr + 7, len - 8);
-            return w;
+    std::string result;
+    const char *p = expr;
+    while (*p) {
+        // Check for $CACHE{...} or ${...}
+        bool is_cache = false;
+        const char *brace = nullptr;
+        if (strncmp(p, "$CACHE{", 7) == 0) {
+            is_cache = true;
+            brace = p + 7;
+        } else if (p[0] == '$' && p[1] == '{') {
+            brace = p + 2;
         }
-    }
-    w.display = expr;
-    return w;
-}
 
-// Re-parse buf into display/force_cache after user edits
-static void reparse_watch(WatchEntry &w)
-{
-    const char *expr = w.buf;
-    if (strncmp(expr, "$CACHE{", 7) == 0) {
-        size_t len = strlen(expr);
-        if (len > 7 && expr[len - 1] == '}') {
-            w.force_cache = true;
-            w.display = std::string(expr + 7, len - 8);
-            return;
+        if (brace) {
+            // Find matching closing brace (accounting for nesting)
+            int depth = 1;
+            const char *q = brace;
+            while (*q && depth > 0) {
+                if (*q == '{') depth++;
+                else if (*q == '}') depth--;
+                if (depth > 0) q++;
+            }
+            if (depth == 0) {
+                // Recursively expand the content between braces
+                std::string inner(brace, (size_t)(q - brace));
+                std::string name = expand_watch(dbg, inner.c_str());
+                // Look up the variable
+                if (is_cache) {
+                    DapVariable *v = find_cache_var(dbg, name);
+                    if (v) result += v->value;
+                } else {
+                    DapVariable *v = find_variable_by_name(dbg, name);
+                    if (v) result += v->value;
+                }
+                p = q + 1;
+                continue;
+            }
         }
+
+        result += *p++;
     }
-    w.force_cache = false;
-    w.display = expr;
-}
-
-static DapVariable *resolve_watch(Debugger *dbg, const WatchEntry &w)
-{
-    if (w.force_cache)
-        return find_cache_var(dbg, w.display);
-    // Locals first
-    DapVariable *locals = find_scope_child(dbg, "Locals");
-    if (locals)
-        for (auto &v : locals->children)
-            if (v.name == w.display) return &v;
-    // Then cache (prefix match)
-    return find_cache_var(dbg, w.display);
-}
-
-static const char *find_variable_scope(Debugger *dbg, const WatchEntry &w)
-{
-    if (w.force_cache)
-        return find_cache_var(dbg, w.display) ? "Cache" : nullptr;
-    DapVariable *locals = find_scope_child(dbg, "Locals");
-    if (locals)
-        for (auto &v : locals->children)
-            if (v.name == w.display) return "Local";
-    return find_cache_var(dbg, w.display) ? "Cache" : nullptr;
+    return result;
 }
 
 static void render_locals(Debugger *dbg)
@@ -1878,17 +1869,23 @@ static void render_watch(Debugger *dbg)
             ImGui::PushID(i);
             ImGui::TableNextRow();
 
+            // Resolve value: bare names do a variable lookup,
+            // expressions with $ are expanded.
             DapVariable *var = nullptr;
-            const char *scope = nullptr;
-            if (!is_sentinel) {
+            std::string expanded;
+            bool is_expr = false;
+            if (!is_sentinel && stopped) {
                 auto &w = dbg->watches[(size_t)i];
-                var = stopped ? resolve_watch(dbg, w) : nullptr;
-                scope = stopped ? find_variable_scope(dbg, w) : nullptr;
-
-                if (var && var->changed)
-                    ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0,
-                        IM_COL32(80, 80, 30, 255));
+                is_expr = (strchr(w.buf, '$') != nullptr);
+                if (is_expr)
+                    expanded = expand_watch(dbg, w.buf);
+                else
+                    var = find_variable_by_name(dbg, w.buf);
             }
+
+            if (var && var->changed)
+                ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0,
+                    IM_COL32(80, 80, 30, 255));
 
             // Name column — always an editable InputText
             ImGui::TableNextColumn();
@@ -1906,16 +1903,14 @@ static void render_watch(Debugger *dbg)
             if (ImGui::IsItemDeactivatedAfterEdit() || enter) {
                 if (is_sentinel) {
                     if (sentinel_buf[0]) {
-                        dbg->watches.push_back(parse_watch_expr(sentinel_buf));
+                        WatchEntry w;
+                        snprintf(w.buf, sizeof(w.buf), "%s", sentinel_buf);
+                        dbg->watches.push_back(w);
                         sentinel_buf[0] = '\0';
                         n++;
                     }
-                } else {
-                    if (buf[0]) {
-                        reparse_watch(dbg->watches[(size_t)i]);
-                    } else {
-                        remove_idx = i;
-                    }
+                } else if (!buf[0]) {
+                    remove_idx = i;
                 }
             }
 
@@ -1934,6 +1929,10 @@ static void render_watch(Debugger *dbg)
                 // empty
             } else if (!stopped) {
                 ImGui::TextDisabled("--");
+            } else if (is_expr) {
+                if (!expanded.empty())
+                    selectable_text("##val", expanded.c_str(),
+                                    expanded.size());
             } else if (!var) {
                 ImGui::TextDisabled("<not found>");
             } else if (!var->value.empty()) {
@@ -1943,11 +1942,17 @@ static void render_watch(Debugger *dbg)
 
             // Scope column
             ImGui::TableNextColumn();
-            if (!is_sentinel) {
-                if (scope)
-                    ImGui::TextUnformatted(scope);
-                else
+            if (!is_sentinel && !is_expr) {
+                if (var) {
+                    DapVariable *locals = find_scope_child(dbg, "Locals");
+                    bool in_locals = false;
+                    if (locals)
+                        for (auto &v : locals->children)
+                            if (&v == var) { in_locals = true; break; }
+                    ImGui::TextUnformatted(in_locals ? "Local" : "Cache");
+                } else if (stopped) {
                     ImGui::TextDisabled("--");
+                }
             }
 
             ImGui::PopID();
@@ -2409,8 +2414,11 @@ void dcmake_load_config(Debugger *dbg)
 
         if (line.starts_with("watch=")) {
             const char *expr = line.c_str() + 6;
-            if (expr[0])
-                dbg->watches.push_back(parse_watch_expr(expr));
+            if (expr[0]) {
+                WatchEntry w;
+                snprintf(w.buf, sizeof(w.buf), "%s", expr);
+                dbg->watches.push_back(w);
+            }
             continue;
         }
 
