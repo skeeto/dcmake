@@ -9,6 +9,8 @@
 #include <unordered_map>
 #include <vector>
 
+struct ImFont;
+
 enum struct DapState {
     IDLE,
     CONNECTING,
@@ -168,6 +170,7 @@ struct Debugger {
     std::vector<WatchEntry> watches;
     std::string output;
     std::vector<std::string> dropped_files;
+    ImFont *mono_font = nullptr;
 };
 
 // Platform layer must implement these.

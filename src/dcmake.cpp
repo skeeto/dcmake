@@ -1,5 +1,6 @@
 #include "dcmake.hpp"
 #include "icon_font.hpp"
+#include "roboto_font.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -1533,7 +1534,9 @@ static void render_sources(Debugger *dbg)
             int highlight_line = is_current_file ? dbg->current_line : 0;
             bool scroll = is_current_file && dbg->scroll_to_line;
 
+            ImGui::PushFont(dbg->mono_font);
             render_source_content(dbg, sf, highlight_line, scroll, &os);
+            ImGui::PopFont();
 
             if (scroll) dbg->scroll_to_line = false;
         }
@@ -1554,6 +1557,7 @@ static void render_stack(Debugger *dbg)
         return;
     }
 
+    ImGui::PushFont(dbg->mono_font);
     for (int i = 0; i < (int)dbg->stack.size(); i++) {
         auto &f = dbg->stack[(size_t)i];
         char label[512];
@@ -1571,6 +1575,7 @@ static void render_stack(Debugger *dbg)
             }
         }
     }
+    ImGui::PopFont();
 
     ImGui::End();
 }
@@ -1696,6 +1701,7 @@ static void render_variable_rows(Debugger *dbg, std::vector<DapVariable> &vars,
 static void render_variable_tree(Debugger *dbg, std::vector<DapVariable> &vars,
                                   const char *filter = "")
 {
+    ImGui::PushFont(dbg->mono_font);
     if (ImGui::BeginTable("##vars", 2,
             ImGuiTableFlags_Resizable |
             ImGuiTableFlags_BordersInnerV)) {
@@ -1704,6 +1710,7 @@ static void render_variable_tree(Debugger *dbg, std::vector<DapVariable> &vars,
         render_variable_rows(dbg, vars, filter);
         ImGui::EndTable();
     }
+    ImGui::PopFont();
 }
 
 // Find a named child in the top-level scope variables (e.g. "Locals", "CacheVariables")
@@ -1875,6 +1882,7 @@ static void render_watch(Debugger *dbg)
     // Sentinel entry for adding new watches
     static char sentinel_buf[256] = {};
 
+    ImGui::PushFont(dbg->mono_font);
     if (ImGui::BeginTable("##watches", 3,
             ImGuiTableFlags_Resizable |
             ImGuiTableFlags_BordersInnerV)) {
@@ -1984,6 +1992,7 @@ static void render_watch(Debugger *dbg)
         if (remove_idx >= 0)
             dbg->watches.erase(dbg->watches.begin() + remove_idx);
     }
+    ImGui::PopFont();
 
     ImGui::End();
 }
@@ -2172,12 +2181,14 @@ static void render_output(Debugger *dbg)
         return;
     }
 
+    ImGui::PushFont(dbg->mono_font);
     ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0, 0, 0, 0));
     ImGui::InputTextMultiline("##output", dbg->output.data(),
                               dbg->output.size() + 1,
                               ImVec2(-1, -1),
                               ImGuiInputTextFlags_ReadOnly);
     ImGui::PopStyleColor();
+    ImGui::PopFont();
 
     ImGui::End();
 }
@@ -2280,6 +2291,8 @@ static void render_ui(Debugger *dbg)
             "nlohmann/json -- Copyright (c) 2013-2023 Niels Lohmann (MIT)");
         ImGui::BulletText(
             "Codicons -- Copyright (c) Microsoft Corporation (MIT)");
+        ImGui::BulletText(
+            "Roboto -- Copyright (c) Google (Apache 2.0)");
         ImGui::Spacing();
         if (ImGui::Button("OK", ImVec2(120, 0)))
             ImGui::CloseCurrentPopup();
@@ -2489,18 +2502,24 @@ void dcmake_load_config(Debugger *dbg)
 
 void dcmake_init(Debugger *dbg)
 {
-    // Merge codicon icons into default font
+    // Load proportional UI font (Inter) as default
     ImGuiIO &io = ImGui::GetIO();
-    io.Fonts->AddFontDefault();
+    io.Fonts->AddFontFromMemoryCompressedTTF(
+        roboto_font_compressed_data, roboto_font_compressed_size, 15.0f);
+
+    // Merge codicon icons into the UI font
     ImFontConfig cfg;
     cfg.MergeMode = true;
-    cfg.GlyphOffset = ImVec2(0, 4);
+    cfg.GlyphOffset = ImVec2(0, 2);
     static const ImWchar icon_ranges[] = {
         0xEA76, 0xEA76, 0xEACF, 0xEAD7, 0xEB6F, 0xEB70, 0
     };
     io.Fonts->AddFontFromMemoryCompressedTTF(
         icon_compressed_data, sizeof(icon_compressed_data),
         14.0f, &cfg, icon_ranges);
+
+    // Monospace font for source code, variables, and output
+    dbg->mono_font = io.Fonts->AddFontDefault();
 
     dbg->state = DapState::IDLE;
     dbg->status = "Ready";
