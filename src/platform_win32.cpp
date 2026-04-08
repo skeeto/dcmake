@@ -416,6 +416,8 @@ static LRESULT CALLBACK wnd_proc(HWND hWnd, UINT msg,
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 {
+    ImGui_ImplWin32_EnableDpiAwareness();
+
     // Register window class
     WNDCLASSEXW wc = {};
     wc.cbSize = sizeof(wc);
@@ -504,6 +506,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 
     ImGui_ImplWin32_Init(hwnd);
     ImGui_ImplDX11_Init(g_device, g_context);
+    dbg.dpi_scale = ImGui_ImplWin32_GetDpiScaleForHwnd((void *)hwnd);
 
     ImGuiIO &io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;

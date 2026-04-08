@@ -2502,24 +2502,29 @@ void dcmake_load_config(Debugger *dbg)
 
 void dcmake_init(Debugger *dbg)
 {
-    // Load proportional UI font (Inter) as default
+    // Load fonts at physical pixel size for crisp high-DPI rendering
     ImGuiIO &io = ImGui::GetIO();
+    float s = dbg->dpi_scale;
     io.Fonts->AddFontFromMemoryCompressedTTF(
-        roboto_font_compressed_data, roboto_font_compressed_size, 15.0f);
+        roboto_font_compressed_data, roboto_font_compressed_size, 15.0f * s);
 
     // Merge codicon icons into the UI font
     ImFontConfig cfg;
     cfg.MergeMode = true;
-    cfg.GlyphOffset = ImVec2(0, 2);
+    cfg.GlyphOffset = ImVec2(0, 2 * s);
     static const ImWchar icon_ranges[] = {
         0xEA76, 0xEA76, 0xEACF, 0xEAD7, 0xEB6F, 0xEB70, 0
     };
     io.Fonts->AddFontFromMemoryCompressedTTF(
         icon_compressed_data, sizeof(icon_compressed_data),
-        14.0f, &cfg, icon_ranges);
+        14.0f * s, &cfg, icon_ranges);
 
     // Monospace font for source code, variables, and output
-    dbg->mono_font = io.Fonts->AddFontDefault();
+    ImFontConfig mono_cfg;
+    mono_cfg.SizePixels = 13.0f * s;
+    dbg->mono_font = io.Fonts->AddFontDefault(&mono_cfg);
+
+    io.FontGlobalScale = 1.0f / s;
 
     dbg->state = DapState::IDLE;
     dbg->status = "Ready";

@@ -364,6 +364,7 @@ int main(int argc, char **argv)
     platform_set_icon(window);
     glfwSetWindowUserPointer(window, &dbg);
     glfwSetDropCallback(window, drop_callback);
+    glfwGetWindowContentScale(window, &dbg.dpi_scale, nullptr);
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();

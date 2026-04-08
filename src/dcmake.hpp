@@ -171,6 +171,7 @@ struct Debugger {
     std::string output;
     std::vector<std::string> dropped_files;
     ImFont *mono_font = nullptr;
+    float dpi_scale = 1.0f;
 };
 
 // Platform layer must implement these.
