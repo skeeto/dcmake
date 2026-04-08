@@ -2074,10 +2074,20 @@ static void render_breakpoints_panel(Debugger *dbg)
         char label[512];
         snprintf(label, sizeof(label), "%s %s:%d",
                  bp.verified ? "*" : "?", filename, bp.line);
-        if (ImGui::Checkbox(label, &bp.enabled)) {
+        if (ImGui::Checkbox("##enable", &bp.enabled)) {
             if (dbg->state != DapState::IDLE &&
                 dbg->state != DapState::TERMINATED) {
                 send_breakpoints_for_file(dbg, bp.path);
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Selectable(label, false)) {
+            open_source(dbg, bp.path);
+            for (auto &os : dbg->open_sources) {
+                if (os.path == bp.path) {
+                    os.goto_line = bp.line;
+                    break;
+                }
             }
         }
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
