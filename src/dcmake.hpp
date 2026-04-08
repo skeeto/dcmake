@@ -105,7 +105,6 @@ struct Debugger {
     int  (*pipe_read)(void *ctx, char *buf, int len) = nullptr;
     bool (*pipe_write)(void *ctx, const char *buf, int len) = nullptr;
     void (*pipe_shutdown)(void *ctx) = nullptr;
-    void (*wake)(void *ctx) = nullptr;  // wake main loop from background thread
 
     // Platform stdout capture (set by platform_launch, may be null)
     int  (*stdout_read)(void *ctx, char *buf, int len) = nullptr;
@@ -155,7 +154,6 @@ struct Debugger {
     int win_h = 720;
     bool win_maximized = false;
     bool want_quit = false;
-    bool animating = false;
     bool title_dirty = true;
     bool first_layout = true;
     bool show_stack = true;

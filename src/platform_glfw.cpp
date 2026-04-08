@@ -377,13 +377,8 @@ int main(int argc, char **argv)
             ImGui::LoadIniSettingsFromMemory(ini.data(), ini.size());
     }
 
-    dbg.wake = [](void *) { glfwPostEmptyEvent(); };
-
     while (!glfwWindowShouldClose(window) && !dbg.want_quit) {
-        if (dbg.animating)
-            glfwPollEvents();
-        else
-            glfwWaitEvents();
+        glfwPollEvents();
 
         if (dbg.title_dirty) {
             dbg.title_dirty = false;

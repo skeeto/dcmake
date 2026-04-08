@@ -95,7 +95,6 @@ static void reader_thread_func(Debugger *dbg)
 
             std::lock_guard<std::mutex> lock(dbg->queue_mutex);
             dbg->inbox.push_back(std::move(message));
-            if (dbg->wake) dbg->wake(dbg->platform);
         }
     }
 }
@@ -118,7 +117,6 @@ static void stdout_thread_func(Debugger *dbg)
         if (start < end) {
             std::lock_guard<std::mutex> lock(dbg->queue_mutex);
             dbg->stdout_pending.append(start, (size_t)(end - start));
-            if (dbg->wake) dbg->wake(dbg->platform);
         }
     }
     dbg->stdout_running.store(false);
@@ -2578,10 +2576,6 @@ void dcmake_frame(Debugger *dbg)
 {
     process_messages(dbg);
     render_ui(dbg);
-
-    dbg->animating = false;
-    for (auto &os : dbg->open_sources)
-        if (os.flash_time > 0) dbg->animating = true;
 
     ImGuiIO &io = ImGui::GetIO();
     if (io.WantSaveIniSettings) {
