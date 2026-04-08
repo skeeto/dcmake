@@ -719,7 +719,7 @@ static void render_toolbar(Debugger *dbg)
     ImVec2 toolbar_padding(default_padding.x + 2, default_padding.y + 4);
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, toolbar_padding);
     float avail_w = ImGui::GetContentRegionAvail().x;
-    ImGui::SetNextItemWidth(avail_w - 330);
+    ImGui::SetNextItemWidth(avail_w - 250);
     if (!editable) {
         ImGui::BeginDisabled();
     }
@@ -821,29 +821,6 @@ static void render_toolbar(Debugger *dbg)
         ImGui::SetTooltip("Step Out (Shift+F11)");
     ImGui::EndDisabled();
     ImGui::PopStyleVar();
-
-    ImGui::SameLine();
-    ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
-    ImGui::SameLine();
-    switch (dbg->state) {
-    case DapState::CONNECTING:
-    case DapState::INITIALIZING:
-    case DapState::RUNNING:
-        ImGui::TextColored(ImVec4(0.2f, 0.9f, 0.2f, 1.0f), "%s",
-                           dbg->status.c_str());
-        break;
-    case DapState::STOPPED:
-        ImGui::TextColored(ImVec4(1.0f, 0.9f, 0.2f, 1.0f), "%s",
-                           dbg->status.c_str());
-        break;
-    case DapState::TERMINATED:
-        ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "%s",
-                           dbg->status.c_str());
-        break;
-    default:
-        ImGui::TextUnformatted(dbg->status.c_str());
-        break;
-    }
 }
 
 // --- CMake syntax highlighting ---
@@ -2264,6 +2241,30 @@ static void render_ui(Debugger *dbg)
                 show_about = true;
             ImGui::EndMenu();
         }
+        // Right-aligned status text
+        float status_w = ImGui::CalcTextSize(dbg->status.c_str()).x;
+        ImGui::SetCursorPosX(ImGui::GetWindowWidth() - status_w -
+                             ImGui::GetStyle().ItemSpacing.x);
+        switch (dbg->state) {
+        case DapState::CONNECTING:
+        case DapState::INITIALIZING:
+        case DapState::RUNNING:
+            ImGui::TextColored(ImVec4(0.2f, 0.9f, 0.2f, 1.0f), "%s",
+                               dbg->status.c_str());
+            break;
+        case DapState::STOPPED:
+            ImGui::TextColored(ImVec4(1.0f, 0.9f, 0.2f, 1.0f), "%s",
+                               dbg->status.c_str());
+            break;
+        case DapState::TERMINATED:
+            ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "%s",
+                               dbg->status.c_str());
+            break;
+        default:
+            ImGui::TextUnformatted(dbg->status.c_str());
+            break;
+        }
+
         ImGui::EndMainMenuBar();
     }
 
