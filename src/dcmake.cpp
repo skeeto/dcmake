@@ -1066,6 +1066,7 @@ static std::vector<Token> tokenize_cmake(std::string_view line)
 }
 
 static DapVariable *find_variable_by_name(Debugger *dbg, std::string_view name);
+static std::string expand_watch(Debugger *dbg, const char *expr);
 
 static std::vector<size_t> ifind_all(const std::string &haystack,
                                      const char *needle)
@@ -1231,19 +1232,41 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
                                            tokens[t].text.size());
                     ImGui::PopStyleColor();
                     // Variable hover tooltip
-                    if (stopped && tokens[t].type == TokenType::DEFAULT &&
+                    if (stopped &&
                         ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
                         std::string_view word = tokens[t].text;
-                        DapVariable *var = find_variable_by_name(dbg, word);
-                        if (var) {
-                            ImGui::BeginTooltip();
-                            if (var->value.empty())
-                                ImGui::Text("%s : %s",
-                                    var->name.c_str(), var->type.c_str());
+                        if (tokens[t].type == TokenType::VARIABLE) {
+                            // Strip outer ${} or $CACHE{} to get inner
+                            // content, expand that to the resolved name,
+                            // then look up its value.
+                            std::string expr(word);
+                            std::string inner;
+                            if (expr.starts_with("$CACHE{"))
+                                inner = expr.substr(7, expr.size() - 8);
+                            else if (expr.starts_with("${"))
+                                inner = expr.substr(2, expr.size() - 3);
                             else
-                                ImGui::Text("%s = %s",
-                                    var->name.c_str(), var->value.c_str());
-                            ImGui::EndTooltip();
+                                inner = expr;
+                            std::string name = expand_watch(dbg, inner.c_str());
+                            std::string val = expand_watch(dbg, expr.c_str());
+                            if (!val.empty()) {
+                                ImGui::BeginTooltip();
+                                ImGui::Text("%s = %s", name.c_str(),
+                                            val.c_str());
+                                ImGui::EndTooltip();
+                            }
+                        } else if (tokens[t].type == TokenType::DEFAULT) {
+                            DapVariable *var = find_variable_by_name(dbg, word);
+                            if (var) {
+                                ImGui::BeginTooltip();
+                                if (var->value.empty())
+                                    ImGui::Text("%s : %s",
+                                        var->name.c_str(), var->type.c_str());
+                                else
+                                    ImGui::Text("%s = %s",
+                                        var->name.c_str(), var->value.c_str());
+                                ImGui::EndTooltip();
+                            }
                         }
                     }
                     if (t + 1 < tokens.size())
