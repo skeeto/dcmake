@@ -2081,7 +2081,11 @@ static void render_breakpoints_panel(Debugger *dbg)
             }
         }
         ImGui::SameLine();
-        if (ImGui::Selectable(label, false)) {
+        float close_w = ImGui::CalcTextSize(ICON_CLOSE).x +
+                        ImGui::GetStyle().FramePadding.x * 2 +
+                        ImGui::GetStyle().ItemSpacing.x;
+        if (ImGui::Selectable(label, false, 0,
+                ImVec2(ImGui::GetContentRegionAvail().x - close_w, 0))) {
             open_source(dbg, bp.path);
             for (auto &os : dbg->open_sources) {
                 if (os.path == bp.path) {
