@@ -3,6 +3,7 @@
 
 #include <windows.h>
 #include <commdlg.h>
+#include <shellapi.h>
 #include <shlobj.h>
 #include <d3d11.h>
 
@@ -349,6 +350,7 @@ static void create_rtv()
     back_buffer->Release();
 }
 
+static Debugger *g_dbg = nullptr;
 static WINDOWPLACEMENT g_last_placement = { sizeof(g_last_placement) };
 static RECT g_last_rect;
 
@@ -375,6 +377,18 @@ static LRESULT CALLBACK wnd_proc(HWND hWnd, UINT msg,
         GetWindowPlacement(hWnd, &g_last_placement);
         GetWindowRect(hWnd, &g_last_rect);
         return 0;
+    case WM_DROPFILES: {
+        HDROP drop = (HDROP)wParam;
+        UINT count = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
+        for (UINT i = 0; i < count; i++) {
+            UINT len = DragQueryFileW(drop, i, nullptr, 0);
+            std::wstring wpath(len, L'\0');
+            DragQueryFileW(drop, i, wpath.data(), len + 1);
+            g_dbg->dropped_files.push_back(to_utf8(wpath.c_str()));
+        }
+        DragFinish(drop);
+        return 0;
+    }
     case WM_CLOSE:
         // Capture placement while the window is still valid
         GetWindowPlacement(hWnd, &g_last_placement);
@@ -453,6 +467,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 
     ShowWindow(hwnd, dbg.win_maximized ? SW_SHOWMAXIMIZED : nCmdShow);
     UpdateWindow(hwnd);
+    g_dbg = &dbg;
+    DragAcceptFiles(hwnd, TRUE);
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();

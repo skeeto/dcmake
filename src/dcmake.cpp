@@ -2598,6 +2598,10 @@ void dcmake_stop(Debugger *dbg)
 
 void dcmake_frame(Debugger *dbg)
 {
+    for (auto &path : dbg->dropped_files)
+        open_source(dbg, path);
+    dbg->dropped_files.clear();
+
     process_messages(dbg);
     render_ui(dbg);
 

@@ -294,6 +294,13 @@ bool platform_write_file(const char *path, const char *data, size_t len)
     return wrote == len;
 }
 
+static void drop_callback(GLFWwindow *window, int count, const char **paths)
+{
+    Debugger *dbg = (Debugger *)glfwGetWindowUserPointer(window);
+    for (int i = 0; i < count; i++)
+        dbg->dropped_files.push_back(paths[i]);
+}
+
 // --- GLFW + OpenGL3 entry point ---
 
 int main(int argc, char **argv)
@@ -355,6 +362,8 @@ int main(int argc, char **argv)
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);
     platform_set_icon(window);
+    glfwSetWindowUserPointer(window, &dbg);
+    glfwSetDropCallback(window, drop_callback);
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();

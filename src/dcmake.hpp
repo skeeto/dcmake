@@ -167,6 +167,7 @@ struct Debugger {
     bool show_watch = true;
     std::vector<WatchEntry> watches;
     std::string output;
+    std::vector<std::string> dropped_files;
 };
 
 // Platform layer must implement these.
