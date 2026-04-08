@@ -719,7 +719,7 @@ static void render_toolbar(Debugger *dbg)
     ImVec2 toolbar_padding(default_padding.x + 2, default_padding.y + 4);
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, toolbar_padding);
     float avail_w = ImGui::GetContentRegionAvail().x;
-    ImGui::SetNextItemWidth(avail_w * 0.5f);
+    ImGui::SetNextItemWidth(avail_w - 330);
     if (!editable) {
         ImGui::BeginDisabled();
     }
