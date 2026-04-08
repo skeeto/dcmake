@@ -470,8 +470,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 
     // Center on primary monitor on first start.  Saved geometry is in
     // logical pixels; monitor work area is in physical pixels.
-    int phys_w = (int)(dbg.win_w * ds);
-    int phys_h = (int)(dbg.win_h * ds);
+    int phys_w = (int)((float)dbg.win_w * ds);
+    int phys_h = (int)((float)dbg.win_h * ds);
     int init_x = dbg.win_x, init_y = dbg.win_y;
     if (init_x < 0 || init_y < 0) {
         MONITORINFO mi = { sizeof(mi) };
@@ -481,8 +481,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
         init_x = mi.rcWork.left + (mw - phys_w) / 2;
         init_y = mi.rcWork.top + (mh - phys_h) / 2;
     } else {
-        init_x = (int)(init_x * ds);
-        init_y = (int)(init_y * ds);
+        init_x = (int)((float)init_x * ds);
+        init_y = (int)((float)init_y * ds);
     }
 
     HWND hwnd = CreateWindowExW(
@@ -575,10 +575,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
         dbg.win_maximized = (g_last_placement.showCmd == SW_SHOWMAXIMIZED);
         RECT r = dbg.win_maximized ? g_last_placement.rcNormalPosition
                                    : g_last_rect;
-        dbg.win_x = (int)(r.left / ds);
-        dbg.win_y = (int)(r.top / ds);
-        dbg.win_w = (int)((r.right - r.left) / ds);
-        dbg.win_h = (int)((r.bottom - r.top) / ds);
+        dbg.win_x = (int)((float)r.left / ds);
+        dbg.win_y = (int)((float)r.top / ds);
+        dbg.win_w = (int)((float)(r.right - r.left) / ds);
+        dbg.win_h = (int)((float)(r.bottom - r.top) / ds);
     }
 
     dcmake_shutdown(&dbg);
