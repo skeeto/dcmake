@@ -121,12 +121,13 @@ if(NOT WIN32)
   target_link_libraries(imgui PUBLIC glfw)
 
   if(APPLE)
-    add_executable(dcmake src/dcmake.cpp src/platform_glfw.cpp
-                          src/filedialog_macos.mm)
+    add_executable(dcmake src/dcmake.cpp src/dap.cpp src/highlight.cpp
+                          src/platform_glfw.cpp src/filedialog_macos.mm)
     target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json
                           "-framework OpenGL" "-framework Cocoa")
   else()
-    add_executable(dcmake src/dcmake.cpp src/platform_glfw.cpp)
+    add_executable(dcmake src/dcmake.cpp src/dap.cpp src/highlight.cpp
+                          src/platform_glfw.cpp)
     target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json GL)
   endif()
   target_compile_definitions(dcmake PRIVATE DCMAKE_GLFW)
@@ -137,7 +138,8 @@ else()
   )
   target_link_libraries(imgui PUBLIC d3d11 dxgi d3dcompiler dwmapi)
 
-  add_executable(dcmake WIN32 src/dcmake.cpp src/platform_win32.cpp src/dcmake.rc)
+  add_executable(dcmake WIN32 src/dcmake.cpp src/dap.cpp src/highlight.cpp
+                              src/platform_win32.cpp src/dcmake.rc)
   target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json comdlg32)
 endif()
 
