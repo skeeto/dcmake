@@ -462,21 +462,33 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
     }
     dcmake_load_config(&dbg);
 
-    // Center on primary monitor on first start
+    // Query DPI scale for the primary monitor (need this before window
+    // creation to convert saved logical geometry to physical pixels).
+    HMONITOR primary = MonitorFromPoint({0, 0}, MONITOR_DEFAULTTOPRIMARY);
+    dbg.dpi_scale = ImGui_ImplWin32_GetDpiScaleForMonitor((void *)primary);
+    float ds = dbg.dpi_scale;
+
+    // Center on primary monitor on first start.  Saved geometry is in
+    // logical pixels; monitor work area is in physical pixels.
+    int phys_w = (int)(dbg.win_w * ds);
+    int phys_h = (int)(dbg.win_h * ds);
     int init_x = dbg.win_x, init_y = dbg.win_y;
     if (init_x < 0 || init_y < 0) {
         MONITORINFO mi = { sizeof(mi) };
-        GetMonitorInfoW(MonitorFromPoint({0, 0}, MONITOR_DEFAULTTOPRIMARY), &mi);
+        GetMonitorInfoW(primary, &mi);
         int mw = mi.rcWork.right - mi.rcWork.left;
         int mh = mi.rcWork.bottom - mi.rcWork.top;
-        init_x = mi.rcWork.left + (mw - dbg.win_w) / 2;
-        init_y = mi.rcWork.top + (mh - dbg.win_h) / 2;
+        init_x = mi.rcWork.left + (mw - phys_w) / 2;
+        init_y = mi.rcWork.top + (mh - phys_h) / 2;
+    } else {
+        init_x = (int)(init_x * ds);
+        init_y = (int)(init_y * ds);
     }
 
     HWND hwnd = CreateWindowExW(
         0, L"dcmake", L"dcmake",
         WS_OVERLAPPEDWINDOW,
-        init_x, init_y, dbg.win_w, dbg.win_h,
+        init_x, init_y, phys_w, phys_h,
         nullptr, nullptr, hInstance, nullptr);
 
     // Create D3D11 device and swap chain
@@ -506,13 +518,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 
     ImGui_ImplWin32_Init(hwnd);
     ImGui_ImplDX11_Init(g_device, g_context);
-    dbg.dpi_scale = ImGui_ImplWin32_GetDpiScaleForHwnd((void *)hwnd);
 
     ImGuiIO &io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
     dcmake_init(&dbg);
+    ImGui::GetStyle().ScaleAllSizes(dbg.dpi_scale);
 
     // Load ImGui layout
     io.IniFilename = nullptr;
@@ -563,10 +575,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
         dbg.win_maximized = (g_last_placement.showCmd == SW_SHOWMAXIMIZED);
         RECT r = dbg.win_maximized ? g_last_placement.rcNormalPosition
                                    : g_last_rect;
-        dbg.win_x = r.left;
-        dbg.win_y = r.top;
-        dbg.win_w = r.right - r.left;
-        dbg.win_h = r.bottom - r.top;
+        dbg.win_x = (int)(r.left / ds);
+        dbg.win_y = (int)(r.top / ds);
+        dbg.win_w = (int)((r.right - r.left) / ds);
+        dbg.win_h = (int)((r.bottom - r.top) / ds);
     }
 
     dcmake_shutdown(&dbg);

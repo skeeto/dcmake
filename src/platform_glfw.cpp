@@ -378,6 +378,7 @@ int main(int argc, char **argv)
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
     dcmake_init(&dbg);
+    io.FontGlobalScale = 1.0f / dbg.dpi_scale;
 
     // Load ImGui layout
     io.IniFilename = nullptr;

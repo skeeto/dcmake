@@ -2524,8 +2524,6 @@ void dcmake_init(Debugger *dbg)
     mono_cfg.SizePixels = 13.0f * s;
     dbg->mono_font = io.Fonts->AddFontDefault(&mono_cfg);
 
-    io.FontGlobalScale = 1.0f / s;
-
     dbg->state = DapState::IDLE;
     dbg->status = "Ready";
 }
