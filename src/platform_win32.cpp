@@ -94,6 +94,19 @@ static void win32_stdout_shutdown(void *ctx)
     }
 }
 
+// Create directory and all parents, like mkdir -p.
+static void mkdirp(const wchar_t *path)
+{
+    std::wstring buf;
+    for (const wchar_t *p = path; *p; p++) {
+        if ((*p == L'/' || *p == L'\\') && !buf.empty())
+            CreateDirectoryW(buf.c_str(), nullptr);
+        buf += *p;
+    }
+    if (!buf.empty())
+        CreateDirectoryW(buf.c_str(), nullptr);
+}
+
 // Convert wide string to UTF-8
 static std::string to_utf8(const wchar_t *wide)
 {
@@ -421,12 +434,27 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
     if (initial_args.empty()) initial_args = "-B build";
     snprintf(dbg.cmdline, sizeof(dbg.cmdline), "%s", initial_args.c_str());
     {
-        wchar_t appdata[MAX_PATH];
-        if (SUCCEEDED(SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, appdata))) {
-            std::wstring dir = appdata;
-            dir += L"\\dcmake";
-            CreateDirectoryW(dir.c_str(), nullptr);
-            dir += L"\\imgui.ini";
+        std::wstring dir;
+        wchar_t buf[MAX_PATH];
+        DWORD n;
+        n = GetEnvironmentVariableW(L"XDG_CONFIG_HOME", buf, MAX_PATH);
+        if (n > 0 && n < MAX_PATH) {
+            dir = buf;
+        } else {
+            n = GetEnvironmentVariableW(L"HOME", buf, MAX_PATH);
+            if (n > 0 && n < MAX_PATH) {
+                dir = buf;
+                dir += L"/.config";
+            } else {
+                wchar_t appdata[MAX_PATH];
+                if (SUCCEEDED(SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, appdata)))
+                    dir = appdata;
+            }
+        }
+        if (!dir.empty()) {
+            dir += L"/dcmake";
+            mkdirp(dir.c_str());
+            dir += L"/imgui.ini";
             dbg.ini_path = to_utf8(dir.c_str());
         }
     }

@@ -104,7 +104,7 @@ directory:
 | Platform | Path |
 |----------|------|
 | Linux/macOS | `$XDG_CONFIG_HOME/dcmake/` or `~/.config/dcmake/` |
-| Windows | `%AppData%\dcmake\` |
+| Windows | `%XDG_CONFIG_HOME%/dcmake/`, `%HOME%/.config/dcmake/`, or `%AppData%\dcmake\` |
 
 
 [DAP]: https://microsoft.github.io/debug-adapter-protocol/
