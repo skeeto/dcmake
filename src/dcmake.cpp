@@ -155,7 +155,7 @@ static SourceFile *get_source(Debugger *dbg, const std::string &path)
 
 static void send_breakpoints_for_file(Debugger *dbg, const std::string &path)
 {
-    // Clear id/verified on disabled breakpoints so stale IDs can't match events
+    // Clear id on disabled breakpoints so stale IDs can't match events
     json bp_array = json::array();
     for (auto &bp : dbg->breakpoints) {
         if (bp.path != path) continue;
@@ -163,7 +163,6 @@ static void send_breakpoints_for_file(Debugger *dbg, const std::string &path)
             bp_array.push_back({{"line", bp.line}});
         } else {
             bp.id = 0;
-            bp.verified = false;
         }
     }
     if (dbg->run_to_path == path && dbg->run_to_line > 0) {
@@ -521,7 +520,6 @@ static void handle_response(Debugger *dbg, const json &msg)
             auto &resp = msg["body"]["breakpoints"];
             for (size_t i = 0; i < resp.size() && i < sent.size(); i++) {
                 sent[i]->id = resp[i].value("id", 0);
-                sent[i]->verified = resp[i].value("verified", false);
                 int line = resp[i].value("line", 0);
                 if (line > 0) sent[i]->line = line;
             }
@@ -594,15 +592,13 @@ static void handle_event(Debugger *dbg, const json &msg)
         int code = body.value("exitCode", -1);
         dbg->status = "Stopped (exit " + std::to_string(code) + ")";
     } else if (event == "breakpoint") {
-        // Breakpoint verified/changed
+        // Breakpoint line changed
         if (msg.contains("body") && msg["body"].contains("breakpoint")) {
             auto &rbp = msg["body"]["breakpoint"];
             int id = rbp.value("id", 0);
-            bool verified = rbp.value("verified", false);
             int line = rbp.value("line", 0);
             for (auto &bp : dbg->breakpoints) {
                 if (id != 0 && bp.id == id) {
-                    bp.verified = verified;
                     if (line > 0) bp.line = line;
                 }
             }
@@ -2110,8 +2106,7 @@ static void render_breakpoints_panel(Debugger *dbg)
         if (slash) filename = slash + 1;
 
         char label[512];
-        snprintf(label, sizeof(label), "%s %s:%d",
-                 bp.verified ? "*" : "?", filename, bp.line);
+        snprintf(label, sizeof(label), "%s:%d", filename, bp.line);
         if (ImGui::Checkbox("##enable", &bp.enabled)) {
             if (dbg->state != DapState::IDLE &&
                 dbg->state != DapState::TERMINATED) {

@@ -83,7 +83,6 @@ struct LineBreakpoint {
     int line;
     std::string line_text;  // content when set, for relocation after edits
     int id = 0;
-    bool verified = false;
     bool enabled = true;
 };
 
