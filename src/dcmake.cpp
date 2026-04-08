@@ -1235,7 +1235,8 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
                     if (stopped &&
                         ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
                         std::string_view word = tokens[t].text;
-                        if (tokens[t].type == TokenType::VARIABLE) {
+                        if (tokens[t].type == TokenType::VARIABLE &&
+                            !word.starts_with("$ENV{")) {
                             // Strip outer ${} or $CACHE{} to get inner
                             // content, expand that to the resolved name,
                             // then look up its value.
