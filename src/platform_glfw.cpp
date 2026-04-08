@@ -223,14 +223,40 @@ void platform_cleanup(Debugger *dbg)
 }
 
 #ifndef __APPLE__
+// Returns the command's stdout and sets *exit_code.  Returns empty
+// string on failure.  Exit 127 = command not found (shell convention).
+static std::string run_dialog(const char *cmd, int *exit_code)
+{
+    *exit_code = 127;
+    FILE *f = popen(cmd, "r");
+    if (!f) return {};
+    char buf[4096];
+    std::string result;
+    while (fgets(buf, sizeof(buf), f))
+        result += buf;
+    int status = pclose(f);
+    if (WIFEXITED(status))
+        *exit_code = WEXITSTATUS(status);
+    if (*exit_code != 0) return {};
+    while (!result.empty() && result.back() == '\n')
+        result.pop_back();
+    return result;
+}
+
 std::string platform_open_file_dialog()
 {
-    return {};
+    int rc;
+    std::string r = run_dialog("kdialog --getopenfilename . 2>/dev/null", &rc);
+    if (rc != 127) return r;
+    return run_dialog("zenity --file-selection 2>/dev/null", &rc);
 }
 
 std::string platform_open_directory_dialog()
 {
-    return {};
+    int rc;
+    std::string r = run_dialog("kdialog --getexistingdirectory . 2>/dev/null", &rc);
+    if (rc != 127) return r;
+    return run_dialog("zenity --file-selection --directory 2>/dev/null", &rc);
 }
 
 void platform_set_icon(void *)

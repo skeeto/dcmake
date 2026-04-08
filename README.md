@@ -13,8 +13,10 @@ On any platform:
     $ cmake -B build
     $ cmake --build build
 
-Linux distributions may need `xorg-dev` or `libwayland-dev`. By default
-dependencies are downloaded automatically, currently:
+Linux distributions may need `xorg-dev` or `libwayland-dev`. File
+dialogs (Ctrl+O, Set Working Directory) use `kdialog` or `zenity`,
+tried in that order. By default dependencies are downloaded
+automatically, currently:
 
 * [Dear ImGui][] ([docking branch][])
 * [nlohmann/json][]
