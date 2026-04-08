@@ -62,10 +62,17 @@ Then press F10 to begin stepping from the first line of the script.
 |-----|--------|
 | F5 | Start (free-running) / Continue |
 | Shift+F5 | Stop |
+| Ctrl+Shift+F5 | Restart |
 | F10 | Start (break at first line) / Step Over |
 | F11 | Start (break at first line) / Step In |
 | Shift+F11 | Step Out |
 | F9 | Toggle breakpoint on current line |
+| Ctrl+F | Find in source |
+| F3 / Shift+F3 | Next / previous match |
+| Enter / Shift+Enter | Next / previous match (while in find bar) |
+| Escape | Close find or go-to-line bar |
+| Ctrl+G | Go to line |
+| Ctrl+O | Open file |
 
 ## Features
 

@@ -52,6 +52,24 @@ struct OpenSource {
     bool open = true;
     bool focus = false;
     bool needs_dock = true;
+
+    // Find bar
+    bool find_open = false;
+    bool find_focus = false;
+    char find_buf[256] = {};
+    int find_match_idx = -1;
+    int find_match_count = 0;
+    bool find_scroll = false;
+
+    // Go to Line
+    bool goto_open = false;
+    bool goto_focus = false;
+    char goto_buf[16] = {};
+    int goto_line = 0;
+
+    // Flash highlight
+    int flash_line = 0;
+    float flash_time = 0;
 };
 
 struct LineBreakpoint {
@@ -114,6 +132,7 @@ struct Debugger {
 
     // Source tabs
     std::vector<OpenSource> open_sources;
+    std::string focused_source;  // path of last focused source tab
     unsigned int source_dock_id = 0;
     unsigned int dockspace_id = 0;
 

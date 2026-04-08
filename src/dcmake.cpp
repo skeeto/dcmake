@@ -13,8 +13,9 @@
 
 using json = nlohmann::json;
 
-#define ICON_CODICON_MIN       0xEACF
-#define ICON_CODICON_MAX       0xEAD7
+#define ICON_TRIANGLE_LEFT     "\xee\xad\xaf"  // U+EB6F
+#define ICON_TRIANGLE_RIGHT    "\xee\xad\xb0"  // U+EB70
+#define ICON_CLOSE             "\xee\xa9\xb6"  // U+EA76
 #define ICON_DEBUG_CONTINUE    "\xee\xab\x8f"  // U+EACF
 #define ICON_DEBUG_RESTART     "\xee\xab\x92"  // U+EAD2
 #define ICON_DEBUG_START       "\xee\xab\x93"  // U+EAD3
@@ -1066,8 +1067,29 @@ static std::vector<Token> tokenize_cmake(std::string_view line)
 
 static DapVariable *find_variable_by_name(Debugger *dbg, std::string_view name);
 
+static std::vector<size_t> ifind_all(const std::string &haystack,
+                                     const char *needle)
+{
+    std::vector<size_t> results;
+    size_t nlen = strlen(needle);
+    if (nlen == 0 || haystack.size() < nlen) return results;
+    for (size_t i = 0; i <= haystack.size() - nlen; i++) {
+        bool match = true;
+        for (size_t j = 0; j < nlen; j++) {
+            if (tolower((unsigned char)haystack[i + j]) !=
+                tolower((unsigned char)needle[j])) {
+                match = false;
+                break;
+            }
+        }
+        if (match) results.push_back(i);
+    }
+    return results;
+}
+
 static void render_source_content(Debugger *dbg, SourceFile *sf,
-                                   int highlight_line, bool scroll_to)
+                                   int highlight_line, bool scroll_to,
+                                   OpenSource *os)
 {
     int line_count = (int)sf->lines.size();
     float line_height = ImGui::GetTextLineHeightWithSpacing();
@@ -1078,8 +1100,33 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
     char gutter_buf[16];
     snprintf(gutter_buf, sizeof(gutter_buf), "%*d", gutter_digits, line_count);
     float gutter_width = ImGui::CalcTextSize(gutter_buf).x;
+    float arrow_width = ImGui::CalcTextSize("->").x;
+    float spacing = ImGui::GetStyle().ItemSpacing.x;
+    float text_x_off = gutter_width + spacing + arrow_width + spacing;
 
     static int context_menu_line = 0;
+
+    // Find: count matches and locate the current one
+    struct FindMatch { int line; size_t col; };
+    FindMatch current_match = {-1, 0};
+    size_t needle_len = 0;
+    if (os->find_open && os->find_buf[0]) {
+        needle_len = strlen(os->find_buf);
+        int idx = 0;
+        for (int li = 0; li < line_count; li++) {
+            auto positions = ifind_all(sf->lines[(size_t)li], os->find_buf);
+            for (size_t col : positions) {
+                if (idx == os->find_match_idx)
+                    current_match = {li + 1, col};
+                idx++;
+            }
+        }
+        os->find_match_count = idx;
+        if (os->find_match_idx >= idx)
+            os->find_match_idx = idx > 0 ? 0 : -1;
+    } else {
+        os->find_match_count = 0;
+    }
 
     // Click detection: compute line from mouse position directly.
     // Pass explicit line_height to the clipper so its layout matches.
@@ -1115,6 +1162,35 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
                     line_pos,
                     ImVec2(line_pos.x + width, line_pos.y + line_height),
                     IM_COL32(80, 80, 30, 255));
+            }
+
+            if (line_num == os->flash_line && os->flash_time > 0) {
+                float alpha = os->flash_time / 0.5f;  // 1.0 -> 0.0
+                float width = ImGui::GetContentRegionAvail().x +
+                              ImGui::GetScrollX();
+                ImGui::GetWindowDrawList()->AddRectFilled(
+                    line_pos,
+                    ImVec2(line_pos.x + width, line_pos.y + line_height),
+                    IM_COL32(220, 180, 50, (int)(alpha * 120)));
+            }
+
+            // Find match highlights
+            if (needle_len > 0) {
+                auto matches = ifind_all(sf->lines[(size_t)i], os->find_buf);
+                for (size_t col : matches) {
+                    const char *s = sf->lines[(size_t)i].c_str();
+                    float x0 = line_pos.x + text_x_off +
+                               ImGui::CalcTextSize(s, s + col).x;
+                    float x1 = line_pos.x + text_x_off +
+                               ImGui::CalcTextSize(s, s + col + needle_len).x;
+                    bool is_cur = (current_match.line == line_num &&
+                                   current_match.col == col);
+                    ImU32 color = is_cur ? IM_COL32(220, 180, 50, 180)
+                                        : IM_COL32(180, 140, 30, 80);
+                    ImGui::GetWindowDrawList()->AddRectFilled(
+                        ImVec2(x0, line_pos.y),
+                        ImVec2(x1, line_pos.y + line_height), color);
+                }
             }
 
             if (bp_state == 1) {
@@ -1237,11 +1313,30 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
         ImGui::EndPopup();
     }
 
+    // Scroll handling
     if (scroll_to && highlight_line > 0) {
         float target_y = (float)(highlight_line - 1) * line_height;
         float window_h = ImGui::GetWindowHeight();
         ImGui::SetScrollY(target_y - window_h / 2.0f);
     }
+    if (os->find_scroll && current_match.line > 0) {
+        float target_y = (float)(current_match.line - 1) * line_height;
+        float window_h = ImGui::GetWindowHeight();
+        ImGui::SetScrollY(target_y - window_h / 2.0f);
+        os->find_scroll = false;
+    }
+    if (os->goto_line > 0) {
+        float target_y = (float)(os->goto_line - 1) * line_height;
+        float window_h = ImGui::GetWindowHeight();
+        ImGui::SetScrollY(target_y - window_h / 2.0f);
+        os->flash_line = os->goto_line;
+        os->flash_time = 0.5f;
+        os->goto_line = 0;
+    }
+
+    // Decay flash
+    if (os->flash_time > 0)
+        os->flash_time -= ImGui::GetIO().DeltaTime;
 }
 
 static void render_sources(Debugger *dbg)
@@ -1286,13 +1381,139 @@ static void render_sources(Debugger *dbg)
         ImGuiID dock_id = ImGui::GetWindowDockID();
         if (dock_id) dbg->source_dock_id = dock_id;
 
-        bool is_current_file = (dbg->current_source == sf);
-        int highlight_line = is_current_file ? dbg->current_line : 0;
-        bool scroll = is_current_file && dbg->scroll_to_line;
+        // Track last focused source for Edit menu
+        if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows))
+            dbg->focused_source = os.path;
 
-        render_source_content(dbg, sf, highlight_line, scroll);
+        // Keyboard shortcuts
+        ImGuiIO &io = ImGui::GetIO();
+        if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
+            if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_F)) {
+                os.find_open = true;
+                os.find_focus = true;
+            }
+            if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_G)) {
+                os.goto_open = true;
+                os.goto_focus = true;
+            }
+        }
 
-        if (scroll) dbg->scroll_to_line = false;
+        // Find bar (pinned to top of window)
+        if (os.find_open) {
+            ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x * 0.4f);
+            ImGuiInputTextFlags flags = ImGuiInputTextFlags_EnterReturnsTrue |
+                                        ImGuiInputTextFlags_AutoSelectAll;
+            if (os.find_focus) {
+                ImGui::SetKeyboardFocusHere();
+                os.find_focus = false;
+            }
+            char prev_buf[256];
+            memcpy(prev_buf, os.find_buf, sizeof(prev_buf));
+            bool enter = ImGui::InputTextWithHint("##find", "Find...",
+                os.find_buf, sizeof(os.find_buf), flags);
+            ImGui::PopItemWidth();
+
+            // Reset match index on text change
+            if (strcmp(prev_buf, os.find_buf) != 0) {
+                os.find_match_idx = 0;
+                os.find_scroll = true;
+            }
+
+            ImGui::SameLine();
+            if (os.find_match_count > 0)
+                ImGui::Text("%d of %d",
+                    os.find_match_idx + 1, os.find_match_count);
+            else if (os.find_buf[0])
+                ImGui::TextDisabled("No results");
+
+            bool has_matches = os.find_match_count > 0;
+            ImGui::SameLine();
+            ImGui::BeginDisabled(!has_matches);
+            if (ImGui::SmallButton(ICON_TRIANGLE_LEFT "##prev")) {
+                os.find_match_idx = (os.find_match_idx - 1 +
+                    os.find_match_count) % os.find_match_count;
+                os.find_scroll = true;
+            }
+            ImGui::SameLine();
+            if (ImGui::SmallButton(ICON_TRIANGLE_RIGHT "##next")) {
+                os.find_match_idx = (os.find_match_idx + 1) %
+                    os.find_match_count;
+                os.find_scroll = true;
+            }
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            if (ImGui::SmallButton(ICON_CLOSE "##find")) {
+                os.find_open = false;
+                os.find_buf[0] = '\0';
+                os.find_match_idx = -1;
+            }
+
+            // Enter / Shift+Enter to cycle
+            if (enter && has_matches) {
+                if (io.KeyShift)
+                    os.find_match_idx = (os.find_match_idx - 1 +
+                        os.find_match_count) % os.find_match_count;
+                else
+                    os.find_match_idx = (os.find_match_idx + 1) %
+                        os.find_match_count;
+                os.find_scroll = true;
+            }
+            // F3 / Shift+F3
+            if (ImGui::IsKeyPressed(ImGuiKey_F3) && has_matches) {
+                if (io.KeyShift)
+                    os.find_match_idx = (os.find_match_idx - 1 +
+                        os.find_match_count) % os.find_match_count;
+                else
+                    os.find_match_idx = (os.find_match_idx + 1) %
+                        os.find_match_count;
+                os.find_scroll = true;
+            }
+            // Escape to close
+            if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+                os.find_open = false;
+                os.find_buf[0] = '\0';
+                os.find_match_idx = -1;
+            }
+        }
+
+        // Go to Line bar (pinned to top of window)
+        if (os.goto_open) {
+            ImGui::SetNextItemWidth(100);
+            ImGuiInputTextFlags flags = ImGuiInputTextFlags_EnterReturnsTrue |
+                                        ImGuiInputTextFlags_CharsDecimal |
+                                        ImGuiInputTextFlags_AutoSelectAll;
+            if (os.goto_focus) {
+                ImGui::SetKeyboardFocusHere();
+                os.goto_focus = false;
+            }
+            bool enter = ImGui::InputTextWithHint("##goto", "Line number",
+                os.goto_buf, sizeof(os.goto_buf), flags);
+            ImGui::SameLine();
+            if (ImGui::SmallButton(ICON_CLOSE "##goto") ||
+                ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+                os.goto_open = false;
+                os.goto_buf[0] = '\0';
+            }
+            if (enter) {
+                int target = atoi(os.goto_buf);
+                int lc = (int)sf->lines.size();
+                if (target >= 1 && target <= lc)
+                    os.goto_line = target;
+                os.goto_open = false;
+                os.goto_buf[0] = '\0';
+            }
+        }
+
+        if (ImGui::BeginChild("##source_scroll")) {
+            bool is_current_file = (dbg->current_source == sf);
+            int highlight_line = is_current_file ? dbg->current_line : 0;
+            bool scroll = is_current_file && dbg->scroll_to_line;
+
+            render_source_content(dbg, sf, highlight_line, scroll, &os);
+
+            if (scroll) dbg->scroll_to_line = false;
+        }
+        ImGui::EndChild();
 
         ImGui::End();
     }
@@ -1680,7 +1901,7 @@ static void render_breakpoints_panel(Debugger *dbg)
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
             ImGui::SetTooltip("%s:%d", bp.path.c_str(), bp.line);
         ImGui::SameLine();
-        if (ImGui::SmallButton("X")) {
+        if (ImGui::SmallButton(ICON_CLOSE)) {
             remove_idx = i;
         }
         ImGui::PopID();
@@ -1771,6 +1992,26 @@ static void render_ui(Debugger *dbg)
                                 menu_io.ConfigMacOSXBehaviors ? "Cmd+Q"
                                                               : "Alt+F4"))
                 dbg->want_quit = true;
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu("Edit")) {
+            OpenSource *fs = nullptr;
+            for (auto &s : dbg->open_sources)
+                if (s.path == dbg->focused_source) { fs = &s; break; }
+            if (ImGui::MenuItem("Find",
+                                menu_io.ConfigMacOSXBehaviors ? "Cmd+F"
+                                                              : "Ctrl+F",
+                                false, fs != nullptr)) {
+                fs->find_open = true;
+                fs->find_focus = true;
+            }
+            if (ImGui::MenuItem("Go to Line",
+                                menu_io.ConfigMacOSXBehaviors ? "Cmd+G"
+                                                              : "Ctrl+G",
+                                false, fs != nullptr)) {
+                fs->goto_open = true;
+                fs->goto_focus = true;
+            }
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("View")) {
@@ -2007,7 +2248,9 @@ void dcmake_init(Debugger *dbg)
     ImFontConfig cfg;
     cfg.MergeMode = true;
     cfg.GlyphOffset = ImVec2(0, 4);
-    static const ImWchar icon_ranges[] = { ICON_CODICON_MIN, ICON_CODICON_MAX, 0 };
+    static const ImWchar icon_ranges[] = {
+        0xEA76, 0xEA76, 0xEACF, 0xEAD7, 0xEB6F, 0xEB70, 0
+    };
     io.Fonts->AddFontFromMemoryCompressedTTF(
         icon_compressed_data, sizeof(icon_compressed_data),
         14.0f, &cfg, icon_ranges);
