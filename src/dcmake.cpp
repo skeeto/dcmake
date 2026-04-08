@@ -714,23 +714,22 @@ static void render_toolbar(Debugger *dbg)
         }
     }
 
-    // Command line text box
+    // Command line text box — calculate button group width so
+    // the input takes whatever remains and buttons stay visible.
     ImVec2 default_padding = ImGui::GetStyle().FramePadding;
     ImVec2 toolbar_padding(default_padding.x + 2, default_padding.y + 4);
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, toolbar_padding);
+    float btn_w = ImGui::CalcTextSize(ICON_DEBUG_START).x +
+                  toolbar_padding.x * 2;
+    float spacing = ImGui::GetStyle().ItemSpacing.x;
+    float sep_w = spacing * 2 + 1;  // SameLine + separator + SameLine
+    float buttons_w = sep_w + btn_w * 6 + spacing * 5;
     float avail_w = ImGui::GetContentRegionAvail().x;
-    ImGui::SetNextItemWidth(avail_w - 250);
-    if (!editable) {
-        ImGui::BeginDisabled();
-    }
-    ImGui::InputTextWithHint("##cmdline", "(CMake arguments)", dbg->cmdline,
-                              sizeof(dbg->cmdline));
-    if (!editable) {
-        ImGui::EndDisabled();
-    }
+    float input_w = avail_w - buttons_w - spacing;
+    if (input_w < 100) input_w = 100;
 
-    // Start/Continue button (F5)
-    ImGui::SameLine();
+    // Buttons anchored to the right edge
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + input_w + spacing);
     ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
     ImGui::SameLine();
     ImGui::BeginDisabled(!editable && !stopped);
@@ -820,6 +819,15 @@ static void render_toolbar(Debugger *dbg)
                              ImGuiHoveredFlags_AllowWhenDisabled))
         ImGui::SetTooltip("Step Out (Shift+F11)");
     ImGui::EndDisabled();
+
+    // Command line input fills the left side
+    ImGui::SameLine(0, 0);
+    ImGui::SetCursorPosX(ImGui::GetStyle().WindowPadding.x);
+    ImGui::SetNextItemWidth(input_w);
+    if (!editable) ImGui::BeginDisabled();
+    ImGui::InputTextWithHint("##cmdline", "(CMake arguments)", dbg->cmdline,
+                              sizeof(dbg->cmdline));
+    if (!editable) ImGui::EndDisabled();
     ImGui::PopStyleVar();
 }
 
