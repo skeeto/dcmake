@@ -667,6 +667,7 @@ static void render_toolbar(Debugger *dbg)
     if (ImGui::IsKeyPressed(ImGuiKey_F5)) {
         if (io.KeyCtrl && io.KeyShift) {
             if (!idle) {
+                dbg->pause_at_entry = false;
                 dcmake_stop(dbg);
                 dcmake_start(dbg);
             }
@@ -768,6 +769,7 @@ static void render_toolbar(Debugger *dbg)
     ImGui::SameLine();
     ImGui::BeginDisabled(idle);
     if (ImGui::Button(ICON_DEBUG_RESTART)) {
+        dbg->pause_at_entry = false;
         dcmake_stop(dbg);
         dcmake_start(dbg);
     }
