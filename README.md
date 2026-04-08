@@ -88,8 +88,11 @@ Then press F10 to begin stepping from the first line of the script.
 * Breakpoint drift mitigation: breakpoints track their line content so
   they survive file edits between runs
 
-* Persistent layout and state: window positions, panel visibility, and
-  breakpoints are saved across sessions
+* Watch window: pin variables for monitoring across steps; bare names
+  search Locals then Cache, use `$CACHE{VAR}` to target cache explicitly
+
+* Persistent layout and state: window positions, panel visibility,
+  breakpoints, and watch expressions are saved across sessions
 
 ## Configuration
 

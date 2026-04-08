@@ -47,6 +47,12 @@ struct DapScope {
     bool fetched = false;
 };
 
+struct WatchEntry {
+    char buf[256] = {};
+    std::string display;
+    bool force_cache = false;
+};
+
 struct OpenSource {
     std::string path;
     bool open = true;
@@ -160,6 +166,8 @@ struct Debugger {
     bool show_breakpoints = true;
     bool show_filters = true;
     bool show_output = true;
+    bool show_watch = true;
+    std::vector<WatchEntry> watches;
     std::string output;
 };
 

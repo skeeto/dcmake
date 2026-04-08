@@ -1693,18 +1693,87 @@ static DapVariable *find_scope_child(Debugger *dbg, const char *name)
     return nullptr;
 }
 
+// Cache variable names include a type suffix (e.g. "CMAKE_BUILD_TYPE:STRING").
+// Match by the name prefix before the colon.
+static DapVariable *find_cache_var(Debugger *dbg, std::string_view name)
+{
+    DapVariable *scope = find_scope_child(dbg, "CacheVariables");
+    if (!scope) return nullptr;
+    for (auto &v : scope->children) {
+        std::string_view vn = v.name;
+        size_t colon = vn.find(':');
+        std::string_view prefix = (colon != std::string_view::npos)
+                                  ? vn.substr(0, colon) : vn;
+        if (prefix == name) return &v;
+    }
+    return nullptr;
+}
+
 // Look up a variable by name in locals then cache (for hover tooltips)
 static DapVariable *find_variable_by_name(Debugger *dbg, std::string_view name)
 {
-    static const char *scope_names[] = {"Locals", "CacheVariables"};
-    for (auto *sn : scope_names) {
-        DapVariable *scope = find_scope_child(dbg, sn);
-        if (!scope) continue;
-        for (auto &v : scope->children) {
+    DapVariable *locals = find_scope_child(dbg, "Locals");
+    if (locals)
+        for (auto &v : locals->children)
             if (v.name == name) return &v;
+    return find_cache_var(dbg, name);
+}
+
+static WatchEntry parse_watch_expr(const char *expr)
+{
+    WatchEntry w;
+    snprintf(w.buf, sizeof(w.buf), "%s", expr);
+    // Check for $CACHE{NAME} syntax
+    if (strncmp(expr, "$CACHE{", 7) == 0) {
+        size_t len = strlen(expr);
+        if (len > 7 && expr[len - 1] == '}') {
+            w.force_cache = true;
+            w.display = std::string(expr + 7, len - 8);
+            return w;
         }
     }
-    return nullptr;
+    w.display = expr;
+    return w;
+}
+
+// Re-parse buf into display/force_cache after user edits
+static void reparse_watch(WatchEntry &w)
+{
+    const char *expr = w.buf;
+    if (strncmp(expr, "$CACHE{", 7) == 0) {
+        size_t len = strlen(expr);
+        if (len > 7 && expr[len - 1] == '}') {
+            w.force_cache = true;
+            w.display = std::string(expr + 7, len - 8);
+            return;
+        }
+    }
+    w.force_cache = false;
+    w.display = expr;
+}
+
+static DapVariable *resolve_watch(Debugger *dbg, const WatchEntry &w)
+{
+    if (w.force_cache)
+        return find_cache_var(dbg, w.display);
+    // Locals first
+    DapVariable *locals = find_scope_child(dbg, "Locals");
+    if (locals)
+        for (auto &v : locals->children)
+            if (v.name == w.display) return &v;
+    // Then cache (prefix match)
+    return find_cache_var(dbg, w.display);
+}
+
+static const char *find_variable_scope(Debugger *dbg, const WatchEntry &w)
+{
+    if (w.force_cache)
+        return find_cache_var(dbg, w.display) ? "Cache" : nullptr;
+    DapVariable *locals = find_scope_child(dbg, "Locals");
+    if (locals)
+        for (auto &v : locals->children)
+            if (v.name == w.display) return "Local";
+    return find_cache_var(dbg, w.display) ? "Cache" : nullptr;
 }
 
 static void render_locals(Debugger *dbg)
@@ -1773,6 +1842,119 @@ static void render_cache(Debugger *dbg)
         }
     }
     ImGui::EndChild();
+
+    ImGui::End();
+}
+
+static void render_watch(Debugger *dbg)
+{
+    if (!dbg->show_watch) return;
+    if (!ImGui::Begin("Watch", &dbg->show_watch)) {
+        ImGui::End();
+        return;
+    }
+
+    bool stopped = dbg->state == DapState::STOPPED ||
+                   dbg->state == DapState::RUNNING;
+
+    // Sentinel entry for adding new watches
+    static char sentinel_buf[256] = {};
+
+    if (ImGui::BeginTable("##watches", 3,
+            ImGuiTableFlags_Resizable |
+            ImGuiTableFlags_BordersInnerV)) {
+        ImGui::TableSetupColumn("Name");
+        ImGui::TableSetupColumn("Value");
+        ImGui::TableSetupColumn("Scope", ImGuiTableColumnFlags_WidthFixed, 50);
+
+        int remove_idx = -1;
+        int n = (int)dbg->watches.size();
+
+        // Existing watches + one sentinel row
+        for (int i = 0; i <= n; i++) {
+            bool is_sentinel = (i == n);
+            ImGui::PushID(i);
+            ImGui::TableNextRow();
+
+            DapVariable *var = nullptr;
+            const char *scope = nullptr;
+            if (!is_sentinel) {
+                auto &w = dbg->watches[(size_t)i];
+                var = stopped ? resolve_watch(dbg, w) : nullptr;
+                scope = stopped ? find_variable_scope(dbg, w) : nullptr;
+
+                if (var && var->changed)
+                    ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0,
+                        IM_COL32(80, 80, 30, 255));
+            }
+
+            // Name column — always an editable InputText
+            ImGui::TableNextColumn();
+            char *buf = is_sentinel ? sentinel_buf :
+                                      dbg->watches[(size_t)i].buf;
+            size_t buf_size = is_sentinel ? sizeof(sentinel_buf) :
+                                            sizeof(dbg->watches[0].buf);
+            ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0, 0, 0, 0));
+            ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0, 0, 0, 0));
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            ImGuiInputTextFlags fl = ImGuiInputTextFlags_EnterReturnsTrue;
+            bool enter = ImGui::InputText("##name", buf, buf_size, fl);
+            ImGui::PopStyleColor(2);
+
+            if (ImGui::IsItemDeactivatedAfterEdit() || enter) {
+                if (is_sentinel) {
+                    if (sentinel_buf[0]) {
+                        dbg->watches.push_back(parse_watch_expr(sentinel_buf));
+                        sentinel_buf[0] = '\0';
+                        n++;
+                    }
+                } else {
+                    if (buf[0]) {
+                        reparse_watch(dbg->watches[(size_t)i]);
+                    } else {
+                        remove_idx = i;
+                    }
+                }
+            }
+
+            // Context menu to remove (not on sentinel)
+            if (!is_sentinel) {
+                if (ImGui::BeginPopupContextItem("watch_ctx")) {
+                    if (ImGui::MenuItem("Remove"))
+                        remove_idx = i;
+                    ImGui::EndPopup();
+                }
+            }
+
+            // Value column
+            ImGui::TableNextColumn();
+            if (is_sentinel) {
+                // empty
+            } else if (!stopped) {
+                ImGui::TextDisabled("--");
+            } else if (!var) {
+                ImGui::TextDisabled("<not found>");
+            } else if (!var->value.empty()) {
+                selectable_text("##val", var->value.c_str(),
+                                var->value.size());
+            }
+
+            // Scope column
+            ImGui::TableNextColumn();
+            if (!is_sentinel) {
+                if (scope)
+                    ImGui::TextUnformatted(scope);
+                else
+                    ImGui::TextDisabled("--");
+            }
+
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+
+        if (remove_idx >= 0)
+            dbg->watches.erase(dbg->watches.begin() + remove_idx);
+    }
 
     ImGui::End();
 }
@@ -2018,6 +2200,7 @@ static void render_ui(Debugger *dbg)
             ImGui::MenuItem("Call Stack", nullptr, &dbg->show_stack);
             ImGui::MenuItem("Locals", nullptr, &dbg->show_locals);
             ImGui::MenuItem("Cache Variables", nullptr, &dbg->show_cache);
+            ImGui::MenuItem("Watch", nullptr, &dbg->show_watch);
             ImGui::MenuItem("Targets", nullptr, &dbg->show_targets);
             ImGui::MenuItem("Tests", nullptr, &dbg->show_tests);
             ImGui::MenuItem("Breakpoints", nullptr, &dbg->show_breakpoints);
@@ -2113,6 +2296,7 @@ static void render_ui(Debugger *dbg)
         ImGui::DockBuilderDockWindow("Output", left_bottom);
         ImGui::DockBuilderDockWindow("Locals", right_top);
         ImGui::DockBuilderDockWindow("Cache Variables", right_top);
+        ImGui::DockBuilderDockWindow("Watch", right_top);
         ImGui::DockBuilderDockWindow("Targets", right_top);
         ImGui::DockBuilderDockWindow("Tests", right_top);
         ImGui::DockBuilderDockWindow("Breakpoints", right_bottom);
@@ -2129,6 +2313,7 @@ static void render_ui(Debugger *dbg)
     render_sources(dbg);
     render_locals(dbg);
     render_cache(dbg);
+    render_watch(dbg);
     render_targets(dbg);
     render_tests(dbg);
     render_breakpoints_panel(dbg);
@@ -2161,6 +2346,7 @@ static void save_config(Debugger *dbg)
     out += "show_breakpoints="; out += dbg->show_breakpoints ? '1' : '0'; out += '\n';
     out += "show_filters=";     out += dbg->show_filters ? '1' : '0';     out += '\n';
     out += "show_output=";      out += dbg->show_output ? '1' : '0';      out += '\n';
+    out += "show_watch=";       out += dbg->show_watch ? '1' : '0';       out += '\n';
     out += "win_x=";            out += std::to_string(dbg->win_x);        out += '\n';
     out += "win_y=";            out += std::to_string(dbg->win_y);        out += '\n';
     out += "win_w=";            out += std::to_string(dbg->win_w);        out += '\n';
@@ -2173,6 +2359,13 @@ static void save_config(Debugger *dbg)
         out += std::to_string(bp.line); out += '\t';
         out += bp.enabled ? '1' : '0';  out += '\t';
         out += bp.line_text; out += '\n';
+    }
+
+    for (auto &w : dbg->watches) {
+        if (!w.buf[0]) continue;
+        out += "watch=";
+        out += w.buf;
+        out += '\n';
     }
 
     platform_write_file(config_path(dbg).c_str(), out.data(), out.size());
@@ -2197,6 +2390,13 @@ void dcmake_load_config(Debugger *dbg)
         if (end > pos && content[end - 1] == '\r') end--;
         std::string line = content.substr(pos, end - pos);
         pos = (nl == std::string::npos) ? content.size() : nl + 1;
+
+        if (line.starts_with("watch=")) {
+            const char *expr = line.c_str() + 6;
+            if (expr[0])
+                dbg->watches.push_back(parse_watch_expr(expr));
+            continue;
+        }
 
         if (line.starts_with("bp\t")) {
             size_t p1 = 3;
@@ -2230,6 +2430,7 @@ void dcmake_load_config(Debugger *dbg)
         else if (key == "show_breakpoints") dbg->show_breakpoints = val;
         else if (key == "show_filters") dbg->show_filters = val;
         else if (key == "show_output") dbg->show_output = val;
+        else if (key == "show_watch") dbg->show_watch = val;
         else if (key == "win_x") dbg->win_x = std::atoi(line.c_str() + eq + 1);
         else if (key == "win_y") dbg->win_y = std::atoi(line.c_str() + eq + 1);
         else if (key == "win_w") dbg->win_w = std::atoi(line.c_str() + eq + 1);
