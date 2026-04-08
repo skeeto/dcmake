@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-set(DCMAKE_VERSION 1.0.0)
+set(DCMAKE_VERSION 1.1.0)
 if(APPLE)
   project(dcmake VERSION ${DCMAKE_VERSION} LANGUAGES CXX OBJCXX)
 else()
