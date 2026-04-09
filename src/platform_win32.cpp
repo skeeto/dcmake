@@ -252,13 +252,13 @@ void platform_cleanup(Debugger *dbg)
         CloseHandle(p->pipe);
         p->pipe = INVALID_HANDLE_VALUE;
     }
-    if (p->stdout_handle != INVALID_HANDLE_VALUE) {
-        CloseHandle(p->stdout_handle);
-        p->stdout_handle = INVALID_HANDLE_VALUE;
-    }
     if (p->read_op.hEvent) CloseHandle(p->read_op.hEvent);
     if (p->write_op.hEvent) CloseHandle(p->write_op.hEvent);
 
+    // Kill cmake before closing the stdout handle.  CloseHandle blocks
+    // while another thread is in ReadFile on the same handle, so the
+    // job must be terminated first to close the write end of the pipe
+    // and unblock ReadFile.
     if (p->job != INVALID_HANDLE_VALUE) {
         TerminateJobObject(p->job, 1);
         if (p->cmake_process != INVALID_HANDLE_VALUE) {
@@ -266,6 +266,10 @@ void platform_cleanup(Debugger *dbg)
         }
         CloseHandle(p->job);
         p->job = INVALID_HANDLE_VALUE;
+    }
+    if (p->stdout_handle != INVALID_HANDLE_VALUE) {
+        CloseHandle(p->stdout_handle);
+        p->stdout_handle = INVALID_HANDLE_VALUE;
     }
     if (p->cmake_process != INVALID_HANDLE_VALUE) {
         CloseHandle(p->cmake_process);
