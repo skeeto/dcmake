@@ -625,14 +625,12 @@ void process_messages(Debugger *dbg)
         }
     }
 
-    // Detect dead reader thread (pipe closed)
-    if (!dbg->reader_running.load() &&
-        dbg->state != DapState::IDLE &&
-        dbg->state != DapState::TERMINATED) {
-        dbg->state = DapState::TERMINATED;
+    // Detect dead reader thread (pipe closed) — clean up the session
+    if (!dbg->reader_running.load() && dbg->state != DapState::IDLE) {
         if (dbg->status.find("Exited") == std::string::npos &&
-            dbg->status.find("Terminated") == std::string::npos) {
+            dbg->status.find("exit") == std::string::npos) {
             dbg->status = "Stopped";
         }
+        dcmake_stop(dbg);
     }
 }
