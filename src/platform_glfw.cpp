@@ -6,6 +6,7 @@
 
 #include <errno.h>
 #include <signal.h>
+#include <poll.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -60,6 +61,8 @@ static void posix_pipe_shutdown(void *ctx)
 static int posix_stdout_read(void *ctx, char *buf, int len)
 {
     auto *p = (PosixPlatform *)ctx;
+    struct pollfd pfd = {p->stdout_fd, POLLIN, 0};
+    if (poll(&pfd, 1, 100) <= 0) return -1;  // timeout or error
     ssize_t n = read(p->stdout_fd, buf, (size_t)len);
     return n > 0 ? (int)n : 0;
 }
@@ -200,7 +203,17 @@ void platform_cleanup(Debugger *dbg)
         p->sock_fd = -1;
     }
 
-    // Close stdout pipe if still open
+    // Kill cmake before closing the stdout pipe.  On Linux, close()
+    // does not unblock a read() in another thread; the stdout thread
+    // needs cmake to die so the write end of the pipe closes and
+    // read() returns EOF.
+    if (p->cmake_pid > 0) {
+        kill(p->cmake_pid, SIGTERM);
+        waitpid(p->cmake_pid, nullptr, 0);
+        p->cmake_pid = -1;
+    }
+
+    // Close stdout pipe (now safe — stdout thread has seen EOF)
     if (p->stdout_fd >= 0) {
         close(p->stdout_fd);
         p->stdout_fd = -1;
@@ -209,13 +222,6 @@ void platform_cleanup(Debugger *dbg)
     // Clean up socket file
     if (!p->pipe_path.empty()) {
         unlink(p->pipe_path.c_str());
-    }
-
-    // Kill cmake (sh typically execs cmake, so this is the cmake process)
-    if (p->cmake_pid > 0) {
-        kill(p->cmake_pid, SIGTERM);
-        waitpid(p->cmake_pid, nullptr, 0);
-        p->cmake_pid = -1;
     }
 
     delete p;

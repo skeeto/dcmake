@@ -89,7 +89,8 @@ void stdout_thread_func(Debugger *dbg)
     int skip_lines = 3;  // cmake debugger preamble
     while (dbg->stdout_running.load()) {
         int n = dbg->stdout_read(dbg->platform, tmp, sizeof(tmp));
-        if (n <= 0) break;
+        if (n < 0) continue;   // poll timeout — recheck running flag
+        if (n == 0) break;     // EOF
         char *start = tmp;
         char *end = tmp + n;
         while (skip_lines > 0 && start < end) {

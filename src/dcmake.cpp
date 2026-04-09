@@ -1746,6 +1746,9 @@ void dcmake_stop(Debugger *dbg)
     if (dbg->state == DapState::IDLE) return;
 
     dbg->reader_running.store(false);
+    dbg->stdout_running.store(false);
+
+    // Shut down the socket first — this unblocks the reader thread.
     if (dbg->pipe_shutdown) {
         dbg->pipe_shutdown(dbg->platform);
     }
@@ -1753,15 +1756,14 @@ void dcmake_stop(Debugger *dbg)
         dbg->reader_thread.join();
     }
 
-    dbg->stdout_running.store(false);
-    if (dbg->stdout_shutdown) {
-        dbg->stdout_shutdown(dbg->platform);
-    }
+    // Kill cmake before joining the stdout thread.  On Linux, close()
+    // does not unblock a read() in another thread, so the stdout thread
+    // will hang until the write end of the pipe closes (cmake exits).
+    platform_cleanup(dbg);
+
     if (dbg->stdout_thread.joinable()) {
         dbg->stdout_thread.join();
     }
-
-    platform_cleanup(dbg);
 
     dbg->pipe_read = nullptr;
     dbg->pipe_write = nullptr;
