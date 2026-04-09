@@ -114,21 +114,22 @@ endif()
 # --- Platform-specific build ---
 
 if(NOT WIN32)
+  find_package(OpenGL REQUIRED)
   target_sources(imgui PRIVATE
     ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
   )
-  target_link_libraries(imgui PUBLIC glfw)
+  target_link_libraries(imgui PUBLIC glfw OpenGL::GL)
 
   if(APPLE)
     add_executable(dcmake src/dcmake.cpp src/dap.cpp src/highlight.cpp
                           src/platform_glfw.cpp src/filedialog_macos.mm)
     target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json
-                          "-framework OpenGL" "-framework Cocoa")
+                          "-framework Cocoa")
   else()
     add_executable(dcmake src/dcmake.cpp src/dap.cpp src/highlight.cpp
                           src/platform_glfw.cpp)
-    target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json GL)
+    target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json)
   endif()
   target_compile_definitions(dcmake PRIVATE DCMAKE_GLFW)
 else()
