@@ -126,7 +126,7 @@ bool platform_launch(Debugger *dbg, const char *args)
     unlink(p->pipe_path.c_str());
 
     // Build shell command
-    std::string cmd = "cmake --debugger --debugger-pipe=";
+    std::string cmd = "exec cmake --debugger --debugger-pipe=";
     cmd += p->pipe_path;
     cmd += ' ';
     cmd += args;
