@@ -1317,12 +1317,12 @@ static void render_output(Debugger *dbg)
     }
 
     ImGui::PushFont(dbg->mono_font);
-    ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0, 0, 0, 0));
-    ImGui::InputTextMultiline("##output", dbg->output.data(),
-                              dbg->output.size() + 1,
-                              ImVec2(-1, -1),
-                              ImGuiInputTextFlags_ReadOnly);
-    ImGui::PopStyleColor();
+    if (ImGui::BeginChild("##output_scroll")) {
+        bool at_bottom = ImGui::GetScrollY() >= ImGui::GetScrollMaxY();
+        ImGui::TextUnformatted(dbg->output.c_str());
+        if (at_bottom) ImGui::SetScrollHereY(1.0f);
+    }
+    ImGui::EndChild();
     ImGui::PopFont();
 
     ImGui::End();
