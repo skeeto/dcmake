@@ -764,10 +764,17 @@ static void render_variable_rows(Debugger *dbg, std::vector<DapVariable> &vars,
                 ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0,
                     ImGui::GetColorU32(ImVec4(0.4f, 0.4f, 0.1f, 0.35f)));
             ImGui::TableNextColumn();
-            bool open = ImGui::TreeNode(v.name.c_str());
+            bool open = ImGui::TreeNodeEx("##tree",
+                ImGuiTreeNodeFlags_AllowOverlap);
+            ImGui::SameLine(0, 0);
+            ImGui::SetCursorPosY(ImGui::GetCursorPosY()
+                - ImGui::GetStyle().FramePadding.y);
+            selectable_text("##name", v.name.c_str(), v.name.size());
             ImGui::TableNextColumn();
             const char *val = v.value.empty() ? v.type.c_str()
                                               : v.value.c_str();
+            ImGui::SetCursorPosY(ImGui::GetCursorPosY()
+                - ImGui::GetStyle().FramePadding.y);
             ImGui::PushStyleColor(ImGuiCol_Text,
                 ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
             selectable_text("##val", val, strlen(val));
@@ -791,8 +798,15 @@ static void render_variable_rows(Debugger *dbg, std::vector<DapVariable> &vars,
                 ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0,
                     ImGui::GetColorU32(ImVec4(0.4f, 0.4f, 0.1f, 0.35f)));
             ImGui::TableNextColumn();
-            bool open = ImGui::TreeNode(v.name.c_str());
+            bool open = ImGui::TreeNodeEx("##tree",
+                ImGuiTreeNodeFlags_AllowOverlap);
+            ImGui::SameLine(0, 0);
+            ImGui::SetCursorPosY(ImGui::GetCursorPosY()
+                - ImGui::GetStyle().FramePadding.y);
+            selectable_text("##name", v.name.c_str(), v.name.size());
             ImGui::TableNextColumn();
+            ImGui::SetCursorPosY(ImGui::GetCursorPosY()
+                - ImGui::GetStyle().FramePadding.y);
             ImGui::PushStyleColor(ImGuiCol_Text,
                 ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
             selectable_text("##val", v.value.c_str(), v.value.size());
