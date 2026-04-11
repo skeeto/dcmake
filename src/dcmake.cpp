@@ -1345,6 +1345,7 @@ static void render_output(Debugger *dbg)
 static void render_ui(Debugger *dbg)
 {
     static bool show_about = false;
+    static bool reset_pending = false;
 
     // Keyboard shortcuts (global, skip when typing)
     ImGuiIO &menu_io = ImGui::GetIO();
@@ -1409,6 +1410,19 @@ static void render_ui(Debugger *dbg)
             ImGui::MenuItem("Breakpoints", nullptr, &dbg->show_breakpoints);
             ImGui::MenuItem("Exception Filters", nullptr, &dbg->show_filters);
             ImGui::MenuItem("Output", nullptr, &dbg->show_output);
+            ImGui::Separator();
+            if (ImGui::MenuItem("Reset Layout")) {
+                reset_pending = true;
+                dbg->show_stack = true;
+                dbg->show_locals = true;
+                dbg->show_cache = true;
+                dbg->show_watch = true;
+                dbg->show_targets = true;
+                dbg->show_tests = true;
+                dbg->show_breakpoints = true;
+                dbg->show_filters = true;
+                dbg->show_output = true;
+            }
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Help")) {
@@ -1504,9 +1518,14 @@ static void render_ui(Debugger *dbg)
     dbg->dockspace_id = ImGui::GetID("DockSpace");
     ImGuiID dockspace_id = dbg->dockspace_id;
 
-    // Set up default layout only if no saved layout exists
-    if (dbg->first_layout && !ImGui::DockBuilderGetNode(dockspace_id)) {
+    // Reset layout: defer rebuild by one frame so all re-shown
+    // windows are submitted to ImGui before DockBuilder places them.
+    if (reset_pending) {
+        reset_pending = false;
+        dbg->first_layout = true;
+    } else if (dbg->first_layout) {
         dbg->first_layout = false;
+        ImGui::DockBuilderRemoveNode(dockspace_id);
         ImGui::DockBuilderAddNode(dockspace_id,
                                   ImGuiDockNodeFlags_DockSpace);
         ImGui::DockBuilderSetNodeSize(dockspace_id, dock_size);
