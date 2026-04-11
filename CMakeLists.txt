@@ -125,7 +125,8 @@ if(NOT WIN32)
     add_executable(dcmake src/dcmake.cpp src/dap.cpp src/highlight.cpp
                           src/platform_glfw.cpp src/filedialog_macos.mm)
     target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json
-                          "-framework Cocoa")
+                          "-framework Cocoa"
+                          "-framework UniformTypeIdentifiers")
   else()
     add_executable(dcmake src/dcmake.cpp src/dap.cpp src/highlight.cpp
                           src/platform_glfw.cpp)

@@ -168,8 +168,17 @@ struct Debugger {
     bool show_filters = true;
     bool show_output = true;
     bool show_watch = true;
+    bool show_dap_log = false;
     std::vector<WatchEntry> watches;
     std::string output;
+
+    // DAP message log (survives stop for post-mortem, cleared on start)
+    struct DapMessage {
+        bool sent;           // true = to CMake, false = from CMake
+        std::string summary; // "→ request initialize" etc.
+        std::string raw;     // raw JSON string
+    };
+    std::vector<DapMessage> dap_log;
     std::vector<std::string> dropped_files;
     ImFont *mono_font = nullptr;
     float dpi_scale = 1.0f;
@@ -186,6 +195,7 @@ std::string platform_read_file(const char *path);
 bool platform_write_file(const char *path, const char *data, size_t len);
 void platform_set_icon(void *window);
 std::string platform_realpath(const std::string &path);
+std::string platform_save_file_dialog();
 
 // Shared logic called by the platform main loop.
 void dcmake_init(Debugger *dbg);

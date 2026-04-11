@@ -1324,6 +1324,86 @@ static void render_filters_panel(Debugger *dbg)
     ImGui::End();
 }
 
+static void render_json_value(const json &j)
+{
+    if (j.is_object()) {
+        for (auto &[key, val] : j.items()) {
+            if (val.is_structured()) {
+                if (ImGui::TreeNode(key.c_str())) {
+                    render_json_value(val);
+                    ImGui::TreePop();
+                }
+            } else {
+                ImGui::BulletText("%s: %s", key.c_str(),
+                                  val.dump(-1).c_str());
+            }
+        }
+    } else if (j.is_array()) {
+        int idx = 0;
+        for (auto &elem : j) {
+            char label[32];
+            snprintf(label, sizeof(label), "[%d]", idx++);
+            if (elem.is_structured()) {
+                if (ImGui::TreeNode(label)) {
+                    render_json_value(elem);
+                    ImGui::TreePop();
+                }
+            } else {
+                ImGui::BulletText("%s: %s", label,
+                                  elem.dump(-1).c_str());
+            }
+        }
+    } else {
+        ImGui::TextUnformatted(j.dump(-1).c_str());
+    }
+}
+
+static void render_dap_log(Debugger *dbg)
+{
+    if (!dbg->show_dap_log) return;
+    if (!ImGui::Begin("DAP Log", &dbg->show_dap_log)) {
+        ImGui::End();
+        return;
+    }
+
+    // Export button
+    if (ImGui::Button("Export...")) {
+        std::string path = platform_save_file_dialog();
+        if (!path.empty()) {
+            std::string out;
+            for (auto &m : dbg->dap_log)
+                out += m.raw + "\n";
+            platform_write_file(path.c_str(), out.data(), out.size());
+        }
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("(%d messages)", (int)dbg->dap_log.size());
+
+    ImGui::PushFont(dbg->mono_font);
+    if (ImGui::BeginChild("##dap_scroll")) {
+        for (size_t i = 0; i < dbg->dap_log.size(); i++) {
+            auto &m = dbg->dap_log[i];
+            char label[256];
+            snprintf(label, sizeof(label), "%s##%zu",
+                     m.summary.c_str(), i);
+
+            if (ImGui::TreeNode(label)) {
+                json parsed;
+                try { parsed = json::parse(m.raw); } catch (...) {}
+                if (!parsed.is_null())
+                    render_json_value(parsed);
+                else
+                    ImGui::TextUnformatted(m.raw.c_str());
+                ImGui::TreePop();
+            }
+        }
+    }
+    ImGui::EndChild();
+    ImGui::PopFont();
+
+    ImGui::End();
+}
+
 static void render_output(Debugger *dbg)
 {
     if (!dbg->show_output) return;
@@ -1412,6 +1492,7 @@ static void render_ui(Debugger *dbg)
             ImGui::MenuItem("Breakpoints", nullptr, &dbg->show_breakpoints);
             ImGui::MenuItem("Exception Filters", nullptr, &dbg->show_filters);
             ImGui::MenuItem("Output", nullptr, &dbg->show_output);
+            ImGui::MenuItem("DAP Log", nullptr, &dbg->show_dap_log);
             ImGui::Separator();
             if (ImGui::MenuItem("Reset Layout")) {
                 reset_pending = true;
@@ -1424,6 +1505,7 @@ static void render_ui(Debugger *dbg)
                 dbg->show_breakpoints = true;
                 dbg->show_filters = true;
                 dbg->show_output = true;
+                dbg->show_dap_log = false;
             }
             ImGui::EndMenu();
         }
@@ -1546,6 +1628,7 @@ static void render_ui(Debugger *dbg)
 
         dbg->source_dock_id = left_top;
         ImGui::DockBuilderDockWindow("Output", left_bottom);
+        ImGui::DockBuilderDockWindow("DAP Log", left_bottom);
         ImGui::DockBuilderDockWindow("Locals", right_top);
         ImGui::DockBuilderDockWindow("Cache Variables", right_top);
         ImGui::DockBuilderDockWindow("Watch", right_top);
@@ -1572,6 +1655,7 @@ static void render_ui(Debugger *dbg)
     render_stack(dbg);
     render_filters_panel(dbg);
     render_output(dbg);
+    render_dap_log(dbg);
 }
 
 // --- Config persistence ---
@@ -1599,6 +1683,7 @@ static void save_config(Debugger *dbg)
     out += "show_filters=";     out += dbg->show_filters ? '1' : '0';     out += '\n';
     out += "show_output=";      out += dbg->show_output ? '1' : '0';      out += '\n';
     out += "show_watch=";       out += dbg->show_watch ? '1' : '0';       out += '\n';
+    out += "show_dap_log=";    out += dbg->show_dap_log ? '1' : '0';    out += '\n';
     out += "win_x=";            out += std::to_string(dbg->win_x);        out += '\n';
     out += "win_y=";            out += std::to_string(dbg->win_y);        out += '\n';
     out += "win_w=";            out += std::to_string(dbg->win_w);        out += '\n';
@@ -1686,6 +1771,7 @@ void dcmake_load_config(Debugger *dbg)
         else if (key == "show_filters") dbg->show_filters = val;
         else if (key == "show_output") dbg->show_output = val;
         else if (key == "show_watch") dbg->show_watch = val;
+        else if (key == "show_dap_log") dbg->show_dap_log = val;
         else if (key == "win_x") dbg->win_x = std::atoi(line.c_str() + eq + 1);
         else if (key == "win_y") dbg->win_y = std::atoi(line.c_str() + eq + 1);
         else if (key == "win_w") dbg->win_w = std::atoi(line.c_str() + eq + 1);
@@ -1755,6 +1841,7 @@ void dcmake_start(Debugger *dbg)
     dbg->inbox.clear();
     dbg->output.clear();
     dbg->stdout_pending.clear();
+    dbg->dap_log.clear();
     dbg->filter_locals[0] = '\0';
     dbg->filter_cache[0] = '\0';
     dbg->filter_targets[0] = '\0';

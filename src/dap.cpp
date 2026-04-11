@@ -13,6 +13,18 @@ using json = nlohmann::json;
 static void dap_send(Debugger *dbg, const json &msg)
 {
     std::string body = msg.dump();
+
+    // Log outbound message
+    {
+        std::string type = msg.value("type", "?");
+        std::string name = msg.value("command", "?");
+        Debugger::DapMessage dm;
+        dm.sent = true;
+        dm.summary = "-> " + type + " " + name;
+        dm.raw = body;
+        dbg->dap_log.push_back(std::move(dm));
+    }
+
     char header[64];
     int hlen = snprintf(header, sizeof(header),
                         "Content-Length: %zu\r\n\r\n", body.size());
@@ -640,6 +652,19 @@ void process_messages(Debugger *dbg)
         } catch (const json::parse_error &) {
             dbg->status = "JSON parse error";
             continue;
+        }
+
+        // Log inbound message
+        {
+            std::string type = msg.value("type", "?");
+            std::string name = (type == "event")
+                ? msg.value("event", "?")
+                : msg.value("command", "?");
+            Debugger::DapMessage dm;
+            dm.sent = false;
+            dm.summary = "<- " + type + " " + name;
+            dm.raw = raw;
+            dbg->dap_log.push_back(std::move(dm));
         }
 
         std::string type = msg.value("type", "");

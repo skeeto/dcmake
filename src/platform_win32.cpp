@@ -311,6 +311,22 @@ std::string platform_open_file_dialog()
     return {};
 }
 
+std::string platform_save_file_dialog()
+{
+    wchar_t path[MAX_PATH] = {};
+    OPENFILENAMEW ofn = {};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.lpstrFilter = L"JSON Files\0*.json\0All Files\0*.*\0";
+    ofn.lpstrFile = path;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.lpstrDefExt = L"json";
+    ofn.Flags = OFN_OVERWRITEPROMPT;
+    if (GetSaveFileNameW(&ofn)) {
+        return to_utf8(path);
+    }
+    return {};
+}
+
 bool platform_chdir(const char *path)
 {
     return SetCurrentDirectoryW(to_wide(path).c_str());

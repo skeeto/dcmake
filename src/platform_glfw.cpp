@@ -265,6 +265,17 @@ std::string platform_open_directory_dialog()
     return run_dialog("zenity --file-selection --directory 2>/dev/null", &rc);
 }
 
+std::string platform_save_file_dialog()
+{
+    int rc;
+    std::string r = run_dialog(
+        "kdialog --getsavefilename . '*.json|JSON files' 2>/dev/null", &rc);
+    if (rc != 127) return r;
+    return run_dialog(
+        "zenity --file-selection --save --file-filter='*.json' 2>/dev/null",
+        &rc);
+}
+
 void platform_set_icon(void *)
 {
     // Linux: window icon set via .desktop file

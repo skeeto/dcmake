@@ -1,5 +1,6 @@
 #ifdef __APPLE__
 #import <Cocoa/Cocoa.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #include <string>
 #include "icon_data.h"
 
@@ -41,6 +42,18 @@ std::string platform_open_file_dialog()
         if ([panel runModal] == NSModalResponseOK) {
             NSURL *url = [[panel URLs] objectAtIndex:0];
             return std::string([[url path] UTF8String]);
+        }
+    }
+    return {};
+}
+std::string platform_save_file_dialog()
+{
+    @autoreleasepool {
+        NSSavePanel *panel = [NSSavePanel savePanel];
+        panel.allowedContentTypes =
+            @[[UTType typeWithFilenameExtension:@"json"]];
+        if ([panel runModal] == NSModalResponseOK) {
+            return std::string([[[panel URL] path] UTF8String]);
         }
     }
     return {};
