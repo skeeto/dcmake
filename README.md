@@ -117,9 +117,16 @@ dcmake mitigates this by re-sending breakpoints when it learns CMake's
 version of a path, but this only helps after CMake stops for some other
 reason (e.g. pause at entry).
 
+If the debuggee is older than CMake 4.4.0, and dcmake is abruptly stopped
+on a non-Windows host, the CMake debuggee may [get stuck in an infinite
+loop][loop], requiring manual cleanup. This has been fixed upstream. On
+Windows dcmake uses Job Objects, circumventing the bug.
+
+
 [DAP]: https://microsoft.github.io/debug-adapter-protocol/
 [Dear ImGui]: https://github.com/ocornut/imgui
 [GLFW]: https://www.glfw.org/
 [doc]: https://cmake.org/cmake/help/latest/manual/cmake.1.html#cmdoption-cmake-debugger
 [docking branch]: https://github.com/ocornut/imgui/wiki/Docking
+[loop]: https://gitlab.kitware.com/cmake/cmake/-/work_items/27743
 [nlohmann/json]: https://json.nlohmann.me/
