@@ -118,7 +118,7 @@ some other reason, e.g. pause on entry. On Windows, CMake's
 `GetActualCaseForPath` normalizes the `setBreakpoints` path but not its
 internal execution paths, so no client-side workaround is possible.
 Therefore, **use the canonical path case in command line arguments and
-includes**.
+includes**. This is [fixed in w64devkit's CMake][patch].
 
 If the debuggee is older than CMake 4.4.0, and dcmake is abruptly stopped
 on a non-Windows host, the CMake debuggee may [get stuck in an infinite
@@ -127,6 +127,7 @@ dcmake uses Job Objects, circumventing the bug. Other supported platforms
 do not have the equivalent functionality.
 
 
+[patch]: https://github.com/skeeto/w64devkit/blob/master/src/cmake-debugger-realpath.patch
 [DAP]: https://microsoft.github.io/debug-adapter-protocol/
 [Dear ImGui]: https://github.com/ocornut/imgui
 [GLFW]: https://www.glfw.org/
