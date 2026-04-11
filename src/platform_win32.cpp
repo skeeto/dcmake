@@ -363,7 +363,10 @@ std::string platform_realpath(const std::string &path)
     std::wstring result(buf, len);
     if (result.starts_with(L"\\\\?\\"))
         result = result.substr(4);
-    return to_utf8(result.c_str());
+    std::string out = to_utf8(result.c_str());
+    for (char &c : out)
+        if (c == '\\') c = '/';
+    return out;
 }
 
 void platform_set_icon(void *)

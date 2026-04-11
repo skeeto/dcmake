@@ -108,14 +108,16 @@ directory:
 
 ## Known CMake bugs
 
-CMake's DAP debugger only normalizes file path case on Windows. On macOS,
-which also has a case-insensitive filesystem by default, CMake stores
-breakpoints and execution paths with whatever case it received. If the
-case differs -- e.g. a breakpoint set on `Test.cmake` while CMake was
-invoked with `cmake -P test.cmake` -- the breakpoint will not be hit.
-dcmake mitigates this by re-sending breakpoints when it learns CMake's
-version of a path, but this only helps after CMake stops for some other
-reason (e.g. pause at entry).
+CMake's DAP debugger has inconsistent path normalization on
+case-insensitive filesystems (macOS HFS+, Windows NTFS). If the case
+of a file path differs between the DAP client and the command line --
+e.g. a breakpoint set on `Test.cmake` while CMake was invoked with
+`cmake -P test.cmake` -- the breakpoint may not be hit. On macOS,
+dcmake mitigates this by re-sending breakpoints using CMake's version
+of the path, but this only helps after CMake stops for some other
+reason (e.g. pause at entry). On Windows, CMake's own
+`GetActualCaseForPath` normalizes the setBreakpoints path but not its
+internal execution paths, so no client-side workaround is possible.
 
 If the debuggee is older than CMake 4.4.0, and dcmake is abruptly stopped
 on a non-Windows host, the CMake debuggee may [get stuck in an infinite
