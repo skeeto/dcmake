@@ -238,7 +238,7 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
     char gutter_buf[16];
     snprintf(gutter_buf, sizeof(gutter_buf), "%*d", gutter_digits, line_count);
     float gutter_width = ImGui::CalcTextSize(gutter_buf).x;
-    float arrow_width = ImGui::CalcTextSize("->").x;
+    float arrow_width = ImGui::CalcTextSize(ICON_TRIANGLE_RIGHT).x;
     float spacing = ImGui::GetStyle().ItemSpacing.x;
     float text_x_off = gutter_width + spacing + arrow_width + spacing;
 
@@ -350,9 +350,10 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
             ImGui::SameLine();
 
             if (is_current) {
-                ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.2f, 1.0f), "->");
+                ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.2f, 1.0f),
+                                   ICON_TRIANGLE_RIGHT);
             } else {
-                ImGui::TextUnformatted("  ");
+                ImGui::Dummy(ImVec2(arrow_width, 0));
             }
             ImGui::SameLine();
 
@@ -1716,6 +1717,18 @@ void dcmake_init(Debugger *dbg)
     ImFontConfig mono_cfg;
     mono_cfg.SizePixels = 13.0f * s;
     dbg->mono_font = io.Fonts->AddFontDefault(&mono_cfg);
+
+    // Merge codicon icons into the mono font too (for source gutter)
+    ImFontConfig mono_icon_cfg;
+    mono_icon_cfg.MergeMode = true;
+    mono_icon_cfg.GlyphOffset = ImVec2(0, 6 * s);
+    mono_icon_cfg.GlyphMaxAdvanceX = 1.0f * s;
+    static const ImWchar mono_icon_ranges[] = {
+        0xEB6F, 0xEB70, 0
+    };
+    io.Fonts->AddFontFromMemoryCompressedTTF(
+        icon_compressed_data, sizeof(icon_compressed_data),
+        16.0f * s, &mono_icon_cfg, mono_icon_ranges);
 
     dbg->state = DapState::IDLE;
     dbg->status = "Ready";
