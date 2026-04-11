@@ -1,5 +1,5 @@
-// File: '/Users/wellons/src/dcmake/build/_deps/imgui-src/misc/fonts/Roboto-Medium.ttf' (162588 bytes)
-// Exported using binary_to_compressed_c.exe -u8 "/Users/wellons/src/dcmake/build/_deps/imgui-src/misc/fonts/Roboto-Medium.ttf" roboto_font
+// SIL Open Font License, Version 1.1
+// Copyright (C) 2011 The Roboto Project Authors
 static const unsigned int roboto_font_compressed_size = 115741;
 static const unsigned char roboto_font_compressed_data[115741] =
 {

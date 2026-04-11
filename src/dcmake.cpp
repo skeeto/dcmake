@@ -1455,17 +1455,17 @@ static void render_ui(Debugger *dbg)
         ImGui::Spacing();
         ImGui::SeparatorText("Third-party licenses");
         ImGui::BulletText(
-            "Dear ImGui -- Copyright (c) 2014-2026 Omar Cornut (MIT)");
+            "Dear ImGui -- Copyright (C) 2014-2026 Omar Cornut (MIT)");
 #ifdef DCMAKE_GLFW
         ImGui::BulletText(
-            "GLFW -- Copyright (c) 2006-2019 Camilla Loewy (zlib/libpng)");
+            "GLFW -- Copyright (C) 2002-2026 various (zlib/libpng)");
 #endif
         ImGui::BulletText(
-            "nlohmann/json -- Copyright (c) 2013-2023 Niels Lohmann (MIT)");
+            "nlohmann/json -- Copyright (C) 2013-2026 various (MIT)");
         ImGui::BulletText(
-            "Codicons -- Copyright (c) Microsoft Corporation (MIT)");
+            "Codicons -- Copyright (C) 2019 Microsoft Corporation (MIT)");
         ImGui::BulletText(
-            "Roboto -- Copyright (c) Google (Apache 2.0)");
+            "Roboto -- Copyright (C) 2011 Google (Apache 2.0)");
         ImGui::Spacing();
         if (ImGui::Button("OK", ImVec2(120, 0)))
             ImGui::CloseCurrentPopup();

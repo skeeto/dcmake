@@ -1,5 +1,5 @@
 // MIT License
-// Copyright (c) Microsoft Corporation.
+// Copyright (C) 2019 Microsoft Corporation
 static const unsigned char icon_compressed_data[1387] =
 {
     87,188,0,0,0,0,0,0,0,0,6,152,0,4,0,0,55,0,1,0,0,0,11,0,128,0,3,0,48,71,83,85,66,184,250,184,244,0,0,6,108,130,21,44,42,79,83,47,50,55,102,69,156,0,0,5,28,130,15,40,96,99,109,97,112,
