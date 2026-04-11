@@ -111,15 +111,16 @@ void stdout_thread_func(Debugger *dbg)
 
 SourceFile *get_source(Debugger *dbg, const std::string &path)
 {
+    std::string norm = platform_realpath(path);
     for (auto &sf : dbg->sources) {
-        if (sf.path == path) return &sf;
+        if (sf.path == norm) return &sf;
     }
 
-    std::string content = platform_read_file(path.c_str());
+    std::string content = platform_read_file(norm.c_str());
     if (content.empty()) return nullptr;
 
     SourceFile sf;
-    sf.path = path;
+    sf.path = norm;
     size_t pos = 0;
     while (pos < content.size()) {
         size_t nl = content.find('\n', pos);
@@ -152,9 +153,11 @@ void send_breakpoints_for_file(Debugger *dbg, const std::string &path)
     if (dbg->run_to_path == path && dbg->run_to_line > 0) {
         bp_array.push_back({{"line", dbg->run_to_line}});
     }
+    auto it = dbg->cmake_paths.find(path);
+    const std::string &dap_path = (it != dbg->cmake_paths.end()) ? it->second : path;
     int seq = dbg->next_seq;
     dap_request(dbg, "setBreakpoints", {
-        {"source", {{"path", path}}},
+        {"source", {{"path", dap_path}}},
         {"breakpoints", bp_array},
     });
     dbg->pending_bps[seq] = path;
@@ -171,19 +174,20 @@ void send_exception_breakpoints(Debugger *dbg)
 
 void toggle_breakpoint(Debugger *dbg, const std::string &path, int line)
 {
+    std::string norm = platform_realpath(path);
     // Remove if exists
     for (auto it = dbg->breakpoints.begin(); it != dbg->breakpoints.end(); ++it) {
-        if (it->path == path && it->line == line) {
+        if (it->path == norm && it->line == line) {
             dbg->breakpoints.erase(it);
             if (dbg->state != DapState::IDLE && dbg->state != DapState::TERMINATED) {
-                send_breakpoints_for_file(dbg, path);
+                send_breakpoints_for_file(dbg, norm);
             }
             return;
         }
     }
     // Add new
     LineBreakpoint bp;
-    bp.path = path;
+    bp.path = norm;
     bp.line = line;
     SourceFile *sf = get_source(dbg, path);
     if (sf && line >= 1 && line <= (int)sf->lines.size()) {
@@ -191,7 +195,7 @@ void toggle_breakpoint(Debugger *dbg, const std::string &path, int line)
     }
     dbg->breakpoints.push_back(bp);
     if (dbg->state != DapState::IDLE && dbg->state != DapState::TERMINATED) {
-        send_breakpoints_for_file(dbg, path);
+        send_breakpoints_for_file(dbg, norm);
     }
 }
 
@@ -261,14 +265,15 @@ void relocate_breakpoints(Debugger *dbg, const std::string &path)
 
 void open_source(Debugger *dbg, const std::string &path)
 {
+    std::string norm = platform_realpath(path);
     for (auto &os : dbg->open_sources) {
-        if (os.path == path) {
+        if (os.path == norm) {
             os.focus = true;
             return;
         }
     }
     OpenSource os;
-    os.path = path;
+    os.path = norm;
     os.focus = true;
     dbg->open_sources.push_back(std::move(os));
 }
@@ -369,17 +374,37 @@ static void handle_response(Debugger *dbg, const json &msg)
     } else if (command == "stackTrace") {
         auto &body = msg["body"];
         std::vector<StackFrame> new_stack;
+        std::vector<std::string> resend;
         for (auto &frame : body["stackFrames"]) {
             StackFrame sf;
             sf.id = frame.value("id", 0);
             sf.name = frame.value("name", "");
             if (frame.contains("source") && frame["source"].contains("path")) {
-                sf.source_path = frame["source"]["path"];
+                std::string raw = frame["source"]["path"];
+                sf.source_path = platform_realpath(raw);
+                if (raw != sf.source_path) {
+                    auto [it, inserted] = dbg->cmake_paths.emplace(
+                        sf.source_path, raw);
+                    if (inserted || it->second != raw) {
+                        it->second = raw;
+                        resend.push_back(sf.source_path);
+                    }
+                }
             }
             sf.line = frame.value("line", 0);
             new_stack.push_back(std::move(sf));
         }
         dbg->stack = std::move(new_stack);
+
+        // Re-send breakpoints for files where we learned a new CMake name
+        for (auto &f : resend) {
+            for (auto &bp : dbg->breakpoints) {
+                if (bp.path == f) {
+                    send_breakpoints_for_file(dbg, f);
+                    break;
+                }
+            }
+        }
         if (!dbg->stack.empty()) {
             auto &top = dbg->stack[0];
             if (!top.source_path.empty()) {

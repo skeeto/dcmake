@@ -134,6 +134,7 @@ struct Debugger {
     int run_to_line = 0;
     std::vector<ExceptionFilter> exception_filters;
     std::unordered_map<int, std::string> pending_bps;  // request seq → file path
+    std::unordered_map<std::string, std::string> cmake_paths;  // canonical → cmake name
 
     // Source tabs
     std::vector<OpenSource> open_sources;
@@ -184,6 +185,7 @@ bool platform_chdir(const char *path);
 std::string platform_read_file(const char *path);
 bool platform_write_file(const char *path, const char *data, size_t len);
 void platform_set_icon(void *window);
+std::string platform_realpath(const std::string &path);
 
 // Shared logic called by the platform main loop.
 void dcmake_init(Debugger *dbg);

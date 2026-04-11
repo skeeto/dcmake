@@ -347,6 +347,25 @@ bool platform_write_file(const char *path, const char *data, size_t len)
     return wrote == (DWORD)len;
 }
 
+std::string platform_realpath(const std::string &path)
+{
+    std::wstring wpath = to_wide(path.c_str());
+    HANDLE h = CreateFileW(wpath.c_str(), 0,
+                           FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                           nullptr, OPEN_EXISTING,
+                           FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return path;
+    wchar_t buf[MAX_PATH];
+    DWORD len = GetFinalPathNameByHandleW(h, buf, MAX_PATH,
+                                          FILE_NAME_NORMALIZED);
+    CloseHandle(h);
+    if (len == 0 || len >= MAX_PATH) return path;
+    std::wstring result(buf, len);
+    if (result.starts_with(L"\\\\?\\"))
+        result = result.substr(4);
+    return to_utf8(result.c_str());
+}
+
 void platform_set_icon(void *)
 {
     // Icon set via .rc resource file

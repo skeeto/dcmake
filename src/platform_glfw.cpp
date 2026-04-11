@@ -300,6 +300,15 @@ bool platform_write_file(const char *path, const char *data, size_t len)
     return wrote == len;
 }
 
+std::string platform_realpath(const std::string &path)
+{
+    char *resolved = realpath(path.c_str(), nullptr);
+    if (!resolved) return path;
+    std::string result(resolved);
+    free(resolved);
+    return result;
+}
+
 static void drop_callback(GLFWwindow *window, int count, const char **paths)
 {
     Debugger *dbg = (Debugger *)glfwGetWindowUserPointer(window);

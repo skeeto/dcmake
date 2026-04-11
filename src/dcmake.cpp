@@ -1663,7 +1663,7 @@ void dcmake_load_config(Debugger *dbg)
             if (p4 == std::string::npos) continue;
 
             LineBreakpoint bp;
-            bp.path = line.substr(p1, p2 - p1);
+            bp.path = platform_realpath(line.substr(p1, p2 - p1));
             bp.line = std::atoi(line.c_str() + p2 + 1);
             bp.enabled = line[p3 + 1] == '1';
             bp.line_text = line.substr(p4 + 1);
@@ -1825,6 +1825,7 @@ void dcmake_stop(Debugger *dbg)
     dbg->current_line = 0;
     dbg->pending_scopes.clear();
     dbg->pending_scope_reqs = 0;
+    dbg->cmake_paths.clear();
     dbg->status = "Stopped";
 }
 

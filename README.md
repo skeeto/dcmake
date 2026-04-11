@@ -106,6 +106,16 @@ directory:
 | Linux/macOS | `$XDG_CONFIG_HOME/dcmake/` or `~/.config/dcmake/` |
 | Windows | `%XDG_CONFIG_HOME%/dcmake/`, `%HOME%/.config/dcmake/`, or `%AppData%\dcmake\` |
 
+## Known CMake bugs
+
+CMake's DAP debugger only normalizes file path case on Windows. On macOS,
+which also has a case-insensitive filesystem by default, CMake stores
+breakpoints and execution paths with whatever case it received. If the
+case differs -- e.g. a breakpoint set on `Test.cmake` while CMake was
+invoked with `cmake -P test.cmake` -- the breakpoint will not be hit.
+dcmake mitigates this by re-sending breakpoints when it learns CMake's
+version of a path, but this only helps after CMake stops for some other
+reason (e.g. pause at entry).
 
 [DAP]: https://microsoft.github.io/debug-adapter-protocol/
 [Dear ImGui]: https://github.com/ocornut/imgui
