@@ -1,6 +1,7 @@
 #include "dap.hpp"
 #include "highlight.hpp"
 #include "icon_font.hpp"
+#include "jetbrains_mono_font.hpp"
 #include "roboto_font.hpp"
 
 #include <cstdio>
@@ -25,6 +26,21 @@ using json = nlohmann::json;
 #define ICON_DEBUG_STOP        "\xee\xab\x97"  // U+EAD7
 
 // --- ImGui UI ---
+
+static void push_mono_font(Debugger *dbg)
+{
+    ImGui::PushFont(dbg->mono_font);
+    ImVec2 sp = ImGui::GetStyle().ItemSpacing;
+    sp.y -= 2.0f * dbg->dpi_scale;
+    if (sp.y < 0.0f) sp.y = 0.0f;
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, sp);
+}
+
+static void pop_mono_font()
+{
+    ImGui::PopStyleVar();
+    ImGui::PopFont();
+}
 
 static void render_toolbar(Debugger *dbg)
 {
@@ -671,9 +687,9 @@ static void render_sources(Debugger *dbg)
             int highlight_line = is_current_file ? dbg->current_line : 0;
             bool scroll = is_current_file && dbg->scroll_to_line;
 
-            ImGui::PushFont(dbg->mono_font);
+            push_mono_font(dbg);
             render_source_content(dbg, sf, highlight_line, scroll, &os);
-            ImGui::PopFont();
+            pop_mono_font();
 
             if (scroll) dbg->scroll_to_line = false;
         }
@@ -694,7 +710,7 @@ static void render_stack(Debugger *dbg)
         return;
     }
 
-    ImGui::PushFont(dbg->mono_font);
+    push_mono_font(dbg);
     for (int i = 0; i < (int)dbg->stack.size(); i++) {
         auto &f = dbg->stack[(size_t)i];
         char label[512];
@@ -712,7 +728,7 @@ static void render_stack(Debugger *dbg)
             }
         }
     }
-    ImGui::PopFont();
+    pop_mono_font();
 
     ImGui::End();
 }
@@ -852,7 +868,7 @@ static void render_variable_rows(Debugger *dbg, std::vector<DapVariable> &vars,
 static void render_variable_tree(Debugger *dbg, std::vector<DapVariable> &vars,
                                   const char *filter = "")
 {
-    ImGui::PushFont(dbg->mono_font);
+    push_mono_font(dbg);
     if (ImGui::BeginTable("##vars", 2,
             ImGuiTableFlags_Resizable |
             ImGuiTableFlags_BordersInnerV)) {
@@ -861,7 +877,7 @@ static void render_variable_tree(Debugger *dbg, std::vector<DapVariable> &vars,
         render_variable_rows(dbg, vars, filter);
         ImGui::EndTable();
     }
-    ImGui::PopFont();
+    pop_mono_font();
 }
 
 // Find a named child in the top-level scope variables (e.g. "Locals", "CacheVariables")
@@ -1033,7 +1049,7 @@ static void render_watch(Debugger *dbg)
     // Sentinel entry for adding new watches
     static char sentinel_buf[256] = {};
 
-    ImGui::PushFont(dbg->mono_font);
+    push_mono_font(dbg);
     if (ImGui::BeginTable("##watches", 3,
             ImGuiTableFlags_Resizable |
             ImGuiTableFlags_BordersInnerV)) {
@@ -1143,7 +1159,7 @@ static void render_watch(Debugger *dbg)
         if (remove_idx >= 0)
             dbg->watches.erase(dbg->watches.begin() + remove_idx);
     }
-    ImGui::PopFont();
+    pop_mono_font();
 
     ImGui::End();
 }
@@ -1379,7 +1395,7 @@ static void render_dap_log(Debugger *dbg)
     ImGui::SameLine();
     ImGui::TextDisabled("(%d messages)", (int)dbg->dap_log.size());
 
-    ImGui::PushFont(dbg->mono_font);
+    push_mono_font(dbg);
     if (ImGui::BeginChild("##dap_scroll")) {
         for (size_t i = 0; i < dbg->dap_log.size(); i++) {
             auto &m = dbg->dap_log[i];
@@ -1399,7 +1415,7 @@ static void render_dap_log(Debugger *dbg)
         }
     }
     ImGui::EndChild();
-    ImGui::PopFont();
+    pop_mono_font();
 
     ImGui::End();
 }
@@ -1412,14 +1428,14 @@ static void render_output(Debugger *dbg)
         return;
     }
 
-    ImGui::PushFont(dbg->mono_font);
+    push_mono_font(dbg);
     if (ImGui::BeginChild("##output_scroll")) {
         bool at_bottom = ImGui::GetScrollY() >= ImGui::GetScrollMaxY();
         ImGui::TextUnformatted(dbg->output.c_str());
         if (at_bottom) ImGui::SetScrollHereY(1.0f);
     }
     ImGui::EndChild();
-    ImGui::PopFont();
+    pop_mono_font();
 
     ImGui::End();
 }
@@ -1564,6 +1580,8 @@ static void render_ui(Debugger *dbg)
             "Codicons -- Copyright (C) 2019 Microsoft Corporation (MIT)");
         ImGui::BulletText(
             "Roboto -- Copyright (C) 2011 Google (Apache 2.0)");
+        ImGui::BulletText(
+            "JetBrains Mono -- Copyright (C) 2020 JetBrains (OFL 1.1)");
         ImGui::Spacing();
         if (ImGui::Button("OK", ImVec2(120, 0)))
             ImGui::CloseCurrentPopup();
@@ -1802,14 +1820,14 @@ void dcmake_init(Debugger *dbg)
         14.0f * s, &cfg, icon_ranges);
 
     // Monospace font for source code, variables, and output
-    ImFontConfig mono_cfg;
-    mono_cfg.SizePixels = 13.0f * s;
-    dbg->mono_font = io.Fonts->AddFontDefault(&mono_cfg);
+    dbg->mono_font = io.Fonts->AddFontFromMemoryCompressedTTF(
+        jetbrains_mono_font_compressed_data,
+        jetbrains_mono_font_compressed_size, 15.0f * s);
 
     // Merge codicon icons into the mono font too (for source gutter)
     ImFontConfig mono_icon_cfg;
     mono_icon_cfg.MergeMode = true;
-    mono_icon_cfg.GlyphOffset = ImVec2(0, 6 * s);
+    mono_icon_cfg.GlyphOffset = ImVec2(0, 3 * s);
     mono_icon_cfg.GlyphMaxAdvanceX = 1.0f * s;
     static const ImWchar mono_icon_ranges[] = {
         0xEB6F, 0xEB70, 0

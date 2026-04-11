@@ -20,7 +20,7 @@ static void dap_send(Debugger *dbg, const json &msg)
         std::string name = msg.value("command", "?");
         Debugger::DapMessage dm;
         dm.sent = true;
-        dm.summary = "-> " + type + " " + name;
+        dm.summary = "\xe2\x86\x92 " + type + " " + name;
         dm.raw = body;
         dbg->dap_log.push_back(std::move(dm));
     }
@@ -662,7 +662,7 @@ void process_messages(Debugger *dbg)
                 : msg.value("command", "?");
             Debugger::DapMessage dm;
             dm.sent = false;
-            dm.summary = "<- " + type + " " + name;
+            dm.summary = "\xe2\x86\x90 " + type + " " + name;
             dm.raw = raw;
             dbg->dap_log.push_back(std::move(dm));
         }
