@@ -1524,9 +1524,11 @@ static void render_ui(Debugger *dbg)
     // windows are submitted to ImGui before DockBuilder places them.
     if (reset_pending) {
         reset_pending = false;
-        dbg->first_layout = true;
-    } else if (dbg->first_layout) {
+        dbg->reset_layout = true;
+    } else if (dbg->reset_layout ||
+               (dbg->first_layout && !ImGui::DockBuilderGetNode(dockspace_id))) {
         dbg->first_layout = false;
+        dbg->reset_layout = false;
         ImGui::DockBuilderRemoveNode(dockspace_id);
         ImGui::DockBuilderAddNode(dockspace_id,
                                   ImGuiDockNodeFlags_DockSpace);

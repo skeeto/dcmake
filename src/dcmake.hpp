@@ -157,6 +157,7 @@ struct Debugger {
     bool want_quit = false;
     bool title_dirty = true;
     bool first_layout = true;
+    bool reset_layout = false;
     bool show_stack = true;
     bool show_locals = true;
     bool show_cache = true;
