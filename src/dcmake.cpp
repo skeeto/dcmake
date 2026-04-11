@@ -30,15 +30,21 @@ using json = nlohmann::json;
 static void push_mono_font(Debugger *dbg)
 {
     ImGui::PushFont(dbg->mono_font);
+    float s = dbg->dpi_scale;
     ImVec2 sp = ImGui::GetStyle().ItemSpacing;
-    sp.y -= 2.0f * dbg->dpi_scale;
-    if (sp.y < 0.0f) sp.y = 0.0f;
+    ImVec2 fp = ImGui::GetStyle().FramePadding;
+    ImVec2 cp = ImGui::GetStyle().CellPadding;
+    sp.y -= 2.0f * s;  if (sp.y < 0.0f) sp.y = 0.0f;
+    fp.y -= 2.0f * s;  if (fp.y < 0.0f) fp.y = 0.0f;
+    cp.y -= 1.0f * s;  if (cp.y < 0.0f) cp.y = 0.0f;
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, sp);
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, fp);
+    ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, cp);
 }
 
 static void pop_mono_font()
 {
-    ImGui::PopStyleVar();
+    ImGui::PopStyleVar(3);
     ImGui::PopFont();
 }
 
