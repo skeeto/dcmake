@@ -1149,6 +1149,7 @@ static void render_watch(Debugger *dbg)
 
 static void render_targets(Debugger *dbg)
 {
+    if (!dbg->show_targets) return;
     if (!ImGui::Begin("Targets", &dbg->show_targets)) {
         ImGui::End();
         return;
