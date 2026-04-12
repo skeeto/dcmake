@@ -73,6 +73,9 @@ struct OpenSource {
     char goto_buf[16] = {};
     int goto_line = 0;
 
+    // Smooth scrolling
+    float scroll_target = -1.0f;  // <0 = inactive
+
     // Flash highlight
     int flash_line = 0;
     float flash_time = 0;

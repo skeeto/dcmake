@@ -509,7 +509,7 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
         ImGui::EndPopup();
     }
 
-    // Scroll handling
+    // Scroll handling — lazy with smooth animation
     if (scroll_to && highlight_line > 0) {
         float target_y = (float)(highlight_line - 1) * line_height;
         float window_h = ImGui::GetWindowHeight();
@@ -519,21 +519,37 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
         float top_edge = scroll_y + margin;
         float bot_edge = scroll_y + window_h - margin - line_height;
         if (target_y < top_edge || target_y > bot_edge)
-            ImGui::SetScrollY(target_y - window_h / 2.0f);
+            os->scroll_target = target_y - window_h / 2.0f;
     }
     if (os->find_scroll && current_match.line > 0) {
         float target_y = (float)(current_match.line - 1) * line_height;
         float window_h = ImGui::GetWindowHeight();
         ImGui::SetScrollY(target_y - window_h / 2.0f);
+        os->scroll_target = -1.0f;
         os->find_scroll = false;
     }
     if (os->goto_line > 0) {
         float target_y = (float)(os->goto_line - 1) * line_height;
         float window_h = ImGui::GetWindowHeight();
         ImGui::SetScrollY(target_y - window_h / 2.0f);
+        os->scroll_target = -1.0f;
         os->flash_line = os->goto_line;
         os->flash_time = 0.5f;
         os->goto_line = 0;
+    }
+
+    // Animate smooth scroll
+    if (os->scroll_target >= 0.0f) {
+        float dt = ImGui::GetIO().DeltaTime;
+        float cur = ImGui::GetScrollY();
+        float t = 1.0f - expf(-12.0f * dt);
+        float next = cur + (os->scroll_target - cur) * t;
+        if (fabsf(next - os->scroll_target) < 0.5f) {
+            ImGui::SetScrollY(os->scroll_target);
+            os->scroll_target = -1.0f;
+        } else {
+            ImGui::SetScrollY(next);
+        }
     }
 
     // Decay flash
