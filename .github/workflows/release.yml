@@ -5,9 +5,10 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
-  release:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,12 +29,75 @@ jobs:
           cmake --build build
           x86_64-w64-mingw32-strip build/dcmake.exe
 
+      - name: Upload source tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-tarball
+          path: dcmake-*.tar.gz
+
+      - name: Upload dcmake.exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: dcmake-unsigned
+          path: build/dcmake.exe
+
+  sign:
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - name: Download dcmake.exe
+        uses: actions/download-artifact@v4
+        with:
+          name: dcmake-unsigned
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign dcmake.exe
+        uses: azure/trusted-signing-action@v0.5.0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          endpoint: ${{ secrets.TRUSTED_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ secrets.TRUSTED_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.CERTIFICATE_PROFILE }}
+          files-folder: ${{ github.workspace }}
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Upload signed dcmake.exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: dcmake-signed
+          path: dcmake.exe
+
+  release:
+    needs: [build, sign]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download source tarball
+        uses: actions/download-artifact@v4
+        with:
+          name: source-tarball
+
+      - name: Download signed dcmake.exe
+        uses: actions/download-artifact@v4
+        with:
+          name: dcmake-signed
+
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
             --title "$VERSION" \
             dcmake-${VERSION}.tar.gz \
-            build/dcmake.exe
+            dcmake.exe
