@@ -16,6 +16,7 @@ using json = nlohmann::json;
 
 #define ICON_TRIANGLE_LEFT     "\xee\xad\xaf"  // U+EB6F
 #define ICON_TRIANGLE_RIGHT    "\xee\xad\xb0"  // U+EB70
+#define ICON_ARROW_SMALL_RIGHT "\xee\xaa\x9f"  // U+EA9F
 #define ICON_CLOSE             "\xee\xa9\xb6"  // U+EA76
 #define ICON_DEBUG_CONTINUE    "\xee\xab\x8f"  // U+EACF
 #define ICON_DEBUG_PAUSE       "\xee\xab\x91"  // U+EAD1
@@ -272,7 +273,7 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
     char gutter_buf[16];
     snprintf(gutter_buf, sizeof(gutter_buf), "%*d", gutter_digits, line_count);
     float gutter_width = ImGui::CalcTextSize(gutter_buf).x;
-    float arrow_width = ImGui::CalcTextSize(ICON_TRIANGLE_RIGHT).x;
+    float arrow_width = ImGui::CalcTextSize(ICON_ARROW_SMALL_RIGHT).x;
     float spacing = ImGui::GetStyle().ItemSpacing.x;
     float text_x_off = gutter_width + spacing + arrow_width + spacing;
 
@@ -385,7 +386,7 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
 
             if (is_current) {
                 ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.2f, 1.0f),
-                                   ICON_TRIANGLE_RIGHT);
+                                   ICON_ARROW_SMALL_RIGHT);
             } else {
                 ImGui::Dummy(ImVec2(arrow_width, 0));
             }
@@ -1870,7 +1871,7 @@ void dcmake_init(Debugger *dbg)
     // Merge codicon icons into the mono font too (for source gutter)
     ImFontConfig mono_icon_cfg;
     mono_icon_cfg.MergeMode = true;
-    mono_icon_cfg.GlyphOffset = ImVec2(0, 3 * s);
+    mono_icon_cfg.GlyphOffset = ImVec2(0, 5 * s);
     mono_icon_cfg.GlyphMaxAdvanceX = 1.0f * s;
     static const ImWchar mono_icon_ranges[] = {
         0xEB6F, 0xEB70, 0
