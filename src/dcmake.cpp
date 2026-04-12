@@ -519,7 +519,7 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
         float top_edge = scroll_y + margin;
         float bot_edge = scroll_y + window_h - margin - line_height;
         if (target_y < top_edge || target_y > bot_edge)
-            os->scroll_target = target_y - window_h / 2.0f;
+            os->scroll_target = fmaxf(0.0f, target_y - window_h / 2.0f);
     }
     if (os->find_scroll && current_match.line > 0) {
         float target_y = (float)(current_match.line - 1) * line_height;
