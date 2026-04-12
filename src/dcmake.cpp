@@ -1405,8 +1405,11 @@ static void render_dap_log(Debugger *dbg)
         std::string path = platform_save_file_dialog();
         if (!path.empty()) {
             std::string out;
-            for (auto &m : dbg->dap_log)
-                out += m.raw + "\n";
+            for (auto &m : dbg->dap_log) {
+                auto j = json::parse(m.raw, nullptr, false);
+                out += j.is_discarded() ? m.raw : j.dump();
+                out += '\n';
+            }
             platform_write_file(path.c_str(), out.data(), out.size());
         }
     }
