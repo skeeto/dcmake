@@ -177,9 +177,10 @@ struct Debugger {
 
     // DAP message log (survives stop for post-mortem, cleared on start)
     struct DapMessage {
-        bool sent;           // true = to CMake, false = from CMake
-        std::string summary; // "→ request initialize" etc.
-        std::string raw;     // raw JSON string
+        bool sent;             // true = to CMake, false = from CMake
+        std::string summary;   // "→ request initialize" etc.
+        std::string raw;       // raw JSON string
+        std::string timestamp; // ISO 8601 with ms and timezone
     };
     std::vector<DapMessage> dap_log;
     std::vector<std::string> dropped_files;

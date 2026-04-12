@@ -1425,8 +1425,11 @@ static void render_dap_log(Debugger *dbg)
             std::string out;
             for (auto &m : dbg->dap_log) {
                 auto j = json::parse(m.raw, nullptr, false);
-                out += j.is_discarded() ? m.raw : j.dump();
-                out += '\n';
+                json line;
+                line["timestamp"] = m.timestamp;
+                line["source"] = m.sent ? "dcmake" : "CMake";
+                line["message"] = j.is_discarded() ? json(m.raw) : j;
+                out += line.dump() + "\n";
             }
             platform_write_file(path.c_str(), out.data(), out.size());
         }
