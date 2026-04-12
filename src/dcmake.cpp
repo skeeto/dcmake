@@ -18,6 +18,7 @@ using json = nlohmann::json;
 #define ICON_TRIANGLE_RIGHT    "\xee\xad\xb0"  // U+EB70
 #define ICON_CLOSE             "\xee\xa9\xb6"  // U+EA76
 #define ICON_DEBUG_CONTINUE    "\xee\xab\x8f"  // U+EACF
+#define ICON_DEBUG_PAUSE       "\xee\xab\x91"  // U+EAD1
 #define ICON_DEBUG_RESTART     "\xee\xab\x92"  // U+EAD2
 #define ICON_DEBUG_START       "\xee\xab\x93"  // U+EAD3
 #define ICON_DEBUG_STEP_INTO   "\xee\xab\x94"  // U+EAD4
@@ -73,6 +74,8 @@ static void render_toolbar(Debugger *dbg)
             dap_request(dbg, "continue", {{"threadId", dbg->thread_id}});
             dbg->state = DapState::RUNNING;
             dbg->status = "Running";
+        } else if (dbg->state == DapState::RUNNING) {
+            dap_request(dbg, "pause", {{"threadId", dbg->thread_id}});
         }
     }
     if (ImGui::IsKeyPressed(ImGuiKey_F10)) {
@@ -125,7 +128,7 @@ static void render_toolbar(Debugger *dbg)
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + input_w + spacing);
     ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
     ImGui::SameLine();
-    ImGui::BeginDisabled(!editable && !stopped);
+    ImGui::BeginDisabled(idle);
     if (editable) {
         if (ImGui::Button(ICON_DEBUG_START)) {
             dbg->pause_at_entry = false;
@@ -134,6 +137,15 @@ static void render_toolbar(Debugger *dbg)
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort |
                                  ImGuiHoveredFlags_AllowWhenDisabled))
             ImGui::SetTooltip("Start (F5)");
+    } else if (dbg->state == DapState::RUNNING ||
+               dbg->state == DapState::CONNECTING ||
+               dbg->state == DapState::INITIALIZING) {
+        if (ImGui::Button(ICON_DEBUG_PAUSE)) {
+            dap_request(dbg, "pause", {{"threadId", dbg->thread_id}});
+        }
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort |
+                                 ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip("Pause (F5)");
     } else {
         if (ImGui::Button(ICON_DEBUG_CONTINUE)) {
             dap_request(dbg, "continue", {{"threadId", dbg->thread_id}});
@@ -1583,7 +1595,7 @@ static void render_ui(Debugger *dbg)
         ImGui::BulletText(
             "nlohmann/json -- Copyright (C) 2013-2026 various (MIT)");
         ImGui::BulletText(
-            "Codicons -- Copyright (C) 2019 Microsoft Corporation (MIT)");
+            "Codicons -- Copyright (C) 2019-2026 Microsoft Corporation (MIT)");
         ImGui::BulletText(
             "Roboto -- Copyright (C) 2011 Google (Apache 2.0)");
         ImGui::BulletText(
@@ -1819,7 +1831,7 @@ void dcmake_init(Debugger *dbg)
     cfg.MergeMode = true;
     cfg.GlyphOffset = ImVec2(0, 2 * s);
     static const ImWchar icon_ranges[] = {
-        0xEA76, 0xEA76, 0xEACF, 0xEAD7, 0xEB6F, 0xEB70, 0
+        0xEA60, 0xF102, 0
     };
     io.Fonts->AddFontFromMemoryCompressedTTF(
         icon_compressed_data, sizeof(icon_compressed_data),
