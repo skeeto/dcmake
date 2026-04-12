@@ -327,6 +327,26 @@ std::string platform_save_file_dialog()
     return {};
 }
 
+std::string platform_now_iso8601()
+{
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    TIME_ZONE_INFORMATION tz;
+    DWORD mode = GetTimeZoneInformation(&tz);
+    int bias = -(int)tz.Bias;
+    if (mode == TIME_ZONE_ID_DAYLIGHT)
+        bias -= (int)tz.DaylightBias;
+    char sign = bias >= 0 ? '+' : '-';
+    if (bias < 0) bias = -bias;
+    char buf[64];
+    int n = snprintf(buf, sizeof(buf),
+        "%04d-%02d-%02dT%02d:%02d:%02d.%03d%c%02d:%02d",
+        st.wYear, st.wMonth, st.wDay,
+        st.wHour, st.wMinute, st.wSecond, st.wMilliseconds,
+        sign, bias / 60, bias % 60);
+    return std::string(buf, (size_t)n);
+}
+
 bool platform_chdir(const char *path)
 {
     return SetCurrentDirectoryW(to_wide(path).c_str());

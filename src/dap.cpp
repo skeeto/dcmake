@@ -2,36 +2,13 @@
 
 #include <algorithm>
 #include <charconv>
-#include <chrono>
 #include <cstdio>
 #include <cstring>
-#include <ctime>
 #include <string_view>
 
 using json = nlohmann::json;
 
 // --- DAP wire protocol ---
-
-static std::string now_iso8601()
-{
-    using namespace std::chrono;
-    auto now = system_clock::now();
-    auto ms = duration_cast<milliseconds>(now.time_since_epoch()) % 1000;
-    std::time_t t = system_clock::to_time_t(now);
-    std::tm local;
-#ifdef _WIN32
-    localtime_s(&local, &t);
-#else
-    localtime_r(&t, &local);
-#endif
-    char buf[64];
-    int n = (int)strftime(buf, sizeof(buf), "%FT%T", &local);
-    n += snprintf(buf + n, sizeof(buf) - (size_t)n, ".%03d", (int)ms.count());
-    char tz[8];
-    strftime(tz, sizeof(tz), "%z", &local);
-    n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%.3s:%.2s", tz, tz + 3);
-    return std::string(buf, (size_t)n);
-}
 
 static void dap_send(Debugger *dbg, const json &msg)
 {
@@ -45,7 +22,7 @@ static void dap_send(Debugger *dbg, const json &msg)
         dm.sent = true;
         dm.summary = "\xe2\x86\x92 " + type + " " + name;
         dm.raw = body;
-        dm.timestamp = now_iso8601();
+        dm.timestamp = platform_now_iso8601();
         dbg->dap_log.push_back(std::move(dm));
     }
 
@@ -688,7 +665,7 @@ void process_messages(Debugger *dbg)
             dm.sent = false;
             dm.summary = "\xe2\x86\x90 " + type + " " + name;
             dm.raw = raw;
-            dm.timestamp = now_iso8601();
+            dm.timestamp = platform_now_iso8601();
             dbg->dap_log.push_back(std::move(dm));
         }
 

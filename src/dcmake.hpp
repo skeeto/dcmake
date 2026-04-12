@@ -200,6 +200,7 @@ bool platform_write_file(const char *path, const char *data, size_t len);
 void platform_set_icon(void *window);
 std::string platform_realpath(const std::string &path);
 std::string platform_save_file_dialog();
+std::string platform_now_iso8601();
 
 // Shared logic called by the platform main loop.
 void dcmake_init(Debugger *dbg);

@@ -282,6 +282,22 @@ void platform_set_icon(void *)
 }
 #endif
 
+std::string platform_now_iso8601()
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    int ms = (int)(ts.tv_nsec / 1000000);
+    std::tm local;
+    localtime_r(&ts.tv_sec, &local);
+    char buf[64];
+    int n = (int)strftime(buf, sizeof(buf), "%FT%T", &local);
+    n += snprintf(buf + n, sizeof(buf) - (size_t)n, ".%03d", ms);
+    char tz[8];
+    strftime(tz, sizeof(tz), "%z", &local);
+    n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%.3s:%.2s", tz, tz + 3);
+    return std::string(buf, (size_t)n);
+}
+
 bool platform_chdir(const char *path)
 {
     return chdir(path) == 0;
