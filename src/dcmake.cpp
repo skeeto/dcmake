@@ -534,17 +534,21 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
         os->goto_line = 0;
     }
 
-    // Animate smooth scroll
+    // Animate smooth scroll (cancel if user scrolls manually)
     if (os->scroll_target >= 0.0f) {
-        float dt = ImGui::GetIO().DeltaTime;
-        float cur = ImGui::GetScrollY();
-        float t = 1.0f - expf(-12.0f * dt);
-        float next = cur + (os->scroll_target - cur) * t;
-        if (fabsf(next - os->scroll_target) < 0.5f) {
-            ImGui::SetScrollY(os->scroll_target);
+        if (ImGui::IsWindowHovered() && ImGui::GetIO().MouseWheel != 0.0f) {
             os->scroll_target = -1.0f;
         } else {
-            ImGui::SetScrollY(next);
+            float dt = ImGui::GetIO().DeltaTime;
+            float cur = ImGui::GetScrollY();
+            float t = 1.0f - expf(-12.0f * dt);
+            float next = cur + (os->scroll_target - cur) * t;
+            if (fabsf(next - os->scroll_target) < 0.5f) {
+                ImGui::SetScrollY(os->scroll_target);
+                os->scroll_target = -1.0f;
+            } else {
+                ImGui::SetScrollY(next);
+            }
         }
     }
 
