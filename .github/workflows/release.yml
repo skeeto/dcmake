@@ -44,6 +44,7 @@ jobs:
   sign:
     needs: build
     runs-on: windows-latest
+    environment: release
     steps:
       - name: Download dcmake.exe
         uses: actions/download-artifact@v4
