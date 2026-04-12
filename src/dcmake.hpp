@@ -1,5 +1,4 @@
-#ifndef DCMAKE_HPP
-#define DCMAKE_HPP
+#pragma once
 
 #include <atomic>
 #include <deque>
@@ -209,5 +208,3 @@ void dcmake_start(Debugger *dbg);
 void dcmake_stop(Debugger *dbg);
 void dcmake_frame(Debugger *dbg);
 void dcmake_shutdown(Debugger *dbg);
-
-#endif

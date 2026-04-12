@@ -1,5 +1,4 @@
-#ifndef HIGHLIGHT_HPP
-#define HIGHLIGHT_HPP
+#pragma once
 
 #include <string_view>
 #include <vector>
@@ -23,5 +22,3 @@ struct Token {
 
 ImU32 token_color(TokenType type);
 std::vector<Token> tokenize_cmake(std::string_view line);
-
-#endif

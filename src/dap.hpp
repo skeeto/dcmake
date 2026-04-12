@@ -1,5 +1,4 @@
-#ifndef DAP_HPP
-#define DAP_HPP
+#pragma once
 
 #include "dcmake.hpp"
 
@@ -19,5 +18,3 @@ void send_breakpoints_for_file(Debugger *dbg, const std::string &path);
 void send_exception_breakpoints(Debugger *dbg);
 void relocate_breakpoints(Debugger *dbg, const std::string &path);
 void fetch_variables(Debugger *dbg, int64_t ref);
-
-#endif
