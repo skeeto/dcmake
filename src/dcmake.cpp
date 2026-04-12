@@ -129,14 +129,12 @@ static void render_toolbar(Debugger *dbg)
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + input_w + spacing);
     ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
     ImGui::SameLine();
-    ImGui::BeginDisabled(idle);
     if (editable) {
         if (ImGui::Button(ICON_DEBUG_START)) {
             dbg->pause_at_entry = false;
             dcmake_start(dbg);
         }
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort |
-                                 ImGuiHoveredFlags_AllowWhenDisabled))
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
             ImGui::SetTooltip("Start (F5)");
     } else if (dbg->state == DapState::RUNNING ||
                dbg->state == DapState::CONNECTING ||
@@ -144,8 +142,7 @@ static void render_toolbar(Debugger *dbg)
         if (ImGui::Button(ICON_DEBUG_PAUSE)) {
             dap_request(dbg, "pause", {{"threadId", dbg->thread_id}});
         }
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort |
-                                 ImGuiHoveredFlags_AllowWhenDisabled))
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
             ImGui::SetTooltip("Pause (F5)");
     } else {
         if (ImGui::Button(ICON_DEBUG_CONTINUE)) {
@@ -153,11 +150,9 @@ static void render_toolbar(Debugger *dbg)
             dbg->state = DapState::RUNNING;
             dbg->status = "Running";
         }
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort |
-                                 ImGuiHoveredFlags_AllowWhenDisabled))
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
             ImGui::SetTooltip("Continue (F5)");
     }
-    ImGui::EndDisabled();
 
     // Stop button (Shift+F5)
     ImGui::SameLine();
