@@ -513,7 +513,13 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
     if (scroll_to && highlight_line > 0) {
         float target_y = (float)(highlight_line - 1) * line_height;
         float window_h = ImGui::GetWindowHeight();
-        ImGui::SetScrollY(target_y - window_h / 2.0f);
+        float scroll_y = ImGui::GetScrollY();
+        float margin = 2.0f * line_height;
+        if (margin * 2 >= window_h) margin = 0.0f;
+        float top_edge = scroll_y + margin;
+        float bot_edge = scroll_y + window_h - margin - line_height;
+        if (target_y < top_edge || target_y > bot_edge)
+            ImGui::SetScrollY(target_y - window_h / 2.0f);
     }
     if (os->find_scroll && current_match.line > 0) {
         float target_y = (float)(current_match.line - 1) * line_height;
