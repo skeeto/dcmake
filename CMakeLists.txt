@@ -140,8 +140,9 @@ else()
   )
   target_link_libraries(imgui PUBLIC d3d11 dxgi d3dcompiler dwmapi)
 
+  configure_file(src/dcmake.rc.in dcmake.rc @ONLY)
   add_executable(dcmake WIN32 src/dcmake.cpp src/dap.cpp src/highlight.cpp
-                              src/platform_win32.cpp src/dcmake.rc)
+                              src/platform_win32.cpp ${CMAKE_CURRENT_BINARY_DIR}/dcmake.rc)
   target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json comdlg32)
 endif()
 
