@@ -420,7 +420,21 @@ int main(int argc, char **argv)
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
     dcmake_init(&dbg);
-    io.FontGlobalScale = 1.0f / dbg.dpi_scale;
+
+    // Fonts are baked at physical size (size * dpi_scale).  On Wayland and
+    // macOS the framebuffer is larger than the window (backing-store
+    // scaling), so FontGlobalScale compensates.  On X11 the framebuffer
+    // equals the window, so the full dpi_scale must remain to enlarge the
+    // UI — with ScaleAllSizes for padding/spacing.
+    int win_w_now, fb_w_now;
+    glfwGetWindowSize(window, &win_w_now, nullptr);
+    glfwGetFramebufferSize(window, &fb_w_now, nullptr);
+    float fb_scale = (win_w_now > 0) ? (float)fb_w_now / (float)win_w_now
+                                     : 1.0f;
+    io.FontGlobalScale = 1.0f / fb_scale;
+    float style_scale = dbg.dpi_scale / fb_scale;
+    if (style_scale > 1.0f)
+        ImGui::GetStyle().ScaleAllSizes(style_scale);
 
     // Load ImGui layout
     io.IniFilename = nullptr;
