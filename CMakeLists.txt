@@ -148,6 +148,9 @@ else()
 endif()
 
 target_compile_definitions(dcmake PRIVATE DCMAKE_VERSION="${PROJECT_VERSION}")
+if(WIN32)
+  target_compile_definitions(dcmake PRIVATE WINVER=0x0600 _WIN32_WINNT=0x0600)
+endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(dcmake PRIVATE -Wall -Wconversion)
