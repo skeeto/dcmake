@@ -1,4 +1,5 @@
 #include "dcmake.hpp"
+#include "i18n.hpp"
 
 #include <cstdio>
 #include <cstring>
@@ -134,7 +135,7 @@ bool platform_launch(Debugger *dbg, const char *args)
     // Create pipe for capturing cmake stdout/stderr
     int stdout_pipe[2];
     if (pipe(stdout_pipe) < 0) {
-        dbg->status = "Failed to create stdout pipe";
+        dbg->status = tr(STR_ERR_STDOUT_PIPE);
         return false;
     }
 
@@ -152,7 +153,7 @@ bool platform_launch(Debugger *dbg, const char *args)
     if (pid < 0) {
         close(stdout_pipe[0]);
         close(stdout_pipe[1]);
-        dbg->status = "Failed to fork cmake";
+        dbg->status = tr(STR_ERR_LAUNCH_CMAKE);
         return false;
     }
     close(stdout_pipe[1]);
@@ -162,7 +163,7 @@ bool platform_launch(Debugger *dbg, const char *args)
     // Connect to cmake's unix domain socket (retry loop)
     p->sock_fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (p->sock_fd < 0) {
-        dbg->status = "Failed to create socket";
+        dbg->status = tr(STR_ERR_SOCKET);
         return false;
     }
 
@@ -185,7 +186,7 @@ bool platform_launch(Debugger *dbg, const char *args)
     }
 
     if (!connected) {
-        dbg->status = "Failed to connect to cmake debugger";
+        dbg->status = tr(STR_ERR_CONNECT_CMAKE);
         return false;
     }
 
@@ -280,6 +281,15 @@ void platform_set_icon(void *)
 {
     // Linux: window icon set via .desktop file
 }
+
+// Linux: no desktop-wide locale API.  lang_init() already checks the
+// LC_ALL/LC_MESSAGES/LANG env vars before falling back to us, so by the
+// time we're called the environment didn't pick a language — return
+// English.
+std::string platform_language_code()
+{
+    return "en";
+}
 #endif
 
 std::string platform_now_iso8601()
@@ -347,6 +357,8 @@ static void drop_callback(GLFWwindow *window, int count, const char **paths)
 
 int main(int argc, char **argv)
 {
+    lang_init();
+
     if (!glfwInit()) {
         fprintf(stderr, "dcmake: glfwInit failed\n");
         return 1;

@@ -133,13 +133,14 @@ if(NOT WIN32)
 
   if(APPLE)
     add_executable(dcmake src/dcmake.cpp src/dap.cpp src/highlight.cpp
-                          src/platform_glfw.cpp src/filedialog_macos.mm)
+                          src/i18n.cpp src/platform_glfw.cpp
+                          src/filedialog_macos.mm)
     target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json
                           "-framework Cocoa"
                           "-framework UniformTypeIdentifiers")
   else()
     add_executable(dcmake src/dcmake.cpp src/dap.cpp src/highlight.cpp
-                          src/platform_glfw.cpp)
+                          src/i18n.cpp src/platform_glfw.cpp)
     target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json)
   endif()
   target_compile_definitions(dcmake PRIVATE DCMAKE_GLFW)
@@ -152,7 +153,8 @@ else()
 
   configure_file(src/dcmake.rc.in dcmake.rc @ONLY)
   add_executable(dcmake WIN32 src/dcmake.cpp src/dap.cpp src/highlight.cpp
-                              src/platform_win32.cpp ${CMAKE_CURRENT_BINARY_DIR}/dcmake.rc)
+                              src/i18n.cpp src/platform_win32.cpp
+                              ${CMAKE_CURRENT_BINARY_DIR}/dcmake.rc)
   target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json comdlg32)
 endif()
 

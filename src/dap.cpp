@@ -1,4 +1,5 @@
 #include "dap.hpp"
+#include "i18n.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -365,7 +366,10 @@ static void handle_response(Debugger *dbg, const json &msg)
     bool success = msg.value("success", false);
 
     if (!success) {
-        dbg->status = "Error: " + msg.value("message", "unknown error");
+        char buf[512];
+        std::string m = msg.value("message", "unknown error");
+        snprintf(buf, sizeof(buf), tr(STR_ERROR_FMT), m.c_str());
+        dbg->status = buf;
         return;
     }
 
@@ -425,7 +429,7 @@ static void handle_response(Debugger *dbg, const json &msg)
                 dbg->current_line = top.line;
                 dbg->scroll_to_line = true;
                 open_source(dbg, top.source_path);
-                dbg->status = "Paused";
+                dbg->status = tr(STR_PAUSED);
             }
             // Request scopes for top frame
             dap_request(dbg, "scopes", {{"frameId", top.id}});
@@ -591,10 +595,20 @@ static void handle_event(Debugger *dbg, const json &msg)
         auto &body = msg["body"];
         dbg->thread_id = body.value("threadId", dbg->thread_id);
         std::string reason = body.value("reason", "");
-        if (reason.empty())
-            dbg->status = "Paused";
-        else
-            dbg->status = "Paused (" + reason + ")";
+        if (reason.empty()) {
+            dbg->status = tr(STR_PAUSED);
+        } else {
+            // Translate well-known DAP reasons; unknown values pass through.
+            const char *r = reason.c_str();
+            if      (reason == "pause")      r = tr(STR_REASON_PAUSE);
+            else if (reason == "breakpoint") r = tr(STR_REASON_BREAKPOINT);
+            else if (reason == "step")       r = tr(STR_REASON_STEP);
+            else if (reason == "exception")  r = tr(STR_REASON_EXCEPTION);
+            else if (reason == "entry")      r = tr(STR_REASON_ENTRY);
+            char buf[256];
+            snprintf(buf, sizeof(buf), tr(STR_PAUSED_REASON_FMT), r);
+            dbg->status = buf;
+        }
 
         dap_request(dbg, "stackTrace", {{"threadId", dbg->thread_id}});
 
@@ -607,12 +621,14 @@ static void handle_event(Debugger *dbg, const json &msg)
         dbg->state = DapState::TERMINATED;
         dbg->current_source = nullptr;
         dbg->current_line = 0;
-        dbg->status = "Stopped";
+        dbg->status = tr(STR_STOPPED);
         dap_request(dbg, "disconnect");
     } else if (event == "exited") {
         auto &body = msg["body"];
         int code = body.value("exitCode", -1);
-        dbg->status = "Stopped (exit " + std::to_string(code) + ")";
+        char buf[64];
+        snprintf(buf, sizeof(buf), tr(STR_STOPPED_EXIT_FMT), code);
+        dbg->status = buf;
     } else if (event == "breakpoint") {
         // Breakpoint line changed
         if (msg.contains("body") && msg["body"].contains("breakpoint")) {
@@ -651,7 +667,7 @@ void process_messages(Debugger *dbg)
         try {
             msg = json::parse(raw);
         } catch (const json::parse_error &) {
-            dbg->status = "JSON parse error";
+            dbg->status = tr(STR_JSON_PARSE_ERROR);
             continue;
         }
 
@@ -679,9 +695,10 @@ void process_messages(Debugger *dbg)
 
     // Detect dead reader thread (pipe closed) — clean up the session
     if (!dbg->reader_running.load() && dbg->state != DapState::IDLE) {
-        if (dbg->status.find("Exited") == std::string::npos &&
-            dbg->status.find("exit") == std::string::npos) {
-            dbg->status = "Stopped";
+        // Preserve the prior "exited" status if we already processed
+        // the terminate event; otherwise overwrite transient state.
+        if (dbg->state != DapState::TERMINATED) {
+            dbg->status = tr(STR_STOPPED);
         }
         dcmake_stop(dbg);
     }

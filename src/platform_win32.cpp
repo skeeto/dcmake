@@ -1,4 +1,5 @@
 #include "dcmake.hpp"
+#include "i18n.hpp"
 
 #include <windows.h>
 #include <commdlg.h>
@@ -185,7 +186,7 @@ bool platform_launch(Debugger *dbg, const char *args)
     HANDLE stdout_read_h = INVALID_HANDLE_VALUE;
     HANDLE stdout_write_h = INVALID_HANDLE_VALUE;
     if (!CreatePipe(&stdout_read_h, &stdout_write_h, &sa, 0)) {
-        dbg->status = "Failed to create stdout pipe";
+        dbg->status = tr(STR_ERR_STDOUT_PIPE);
         return false;
     }
     SetHandleInformation(stdout_read_h, HANDLE_FLAG_INHERIT, 0);
@@ -204,7 +205,7 @@ bool platform_launch(Debugger *dbg, const char *args)
                         &si, &pi)) {
         CloseHandle(stdout_read_h);
         CloseHandle(stdout_write_h);
-        dbg->status = "Failed to start cmake";
+        dbg->status = tr(STR_ERR_LAUNCH_CMAKE);
         return false;
     }
     CloseHandle(stdout_write_h);
@@ -235,7 +236,7 @@ bool platform_launch(Debugger *dbg, const char *args)
     }
 
     if (!connected) {
-        dbg->status = "Failed to connect to cmake debugger";
+        dbg->status = tr(STR_ERR_CONNECT_CMAKE);
         return false;
     }
 
@@ -409,6 +410,37 @@ void platform_set_icon(void *)
     // Icon set via .rc resource file
 }
 
+// GetUserPreferredUILanguages with MUI_LANGUAGE_NAME returns a
+// double-null-terminated list of BCP-47 language names
+// ("de-DE\0en-US\0\0") in preference order, following the Windows
+// display language setting (Settings > Time & Language > Language).
+// We take the first entry and convert "-" to "_" so lang_lookup's
+// POSIX-style parser (which splits on "_", ".", "@") finds the base
+// language.
+//
+// This is NOT the keyboard input language from the taskbar indicator
+// — that's a separate setting and Windows apps generally don't follow
+// it.
+std::string platform_language_code()
+{
+    ULONG num = 0;
+    ULONG size = 0;
+    if (!GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &num, nullptr, &size)
+        || size == 0)
+        return "en";
+    std::wstring buf(size, L'\0');
+    if (!GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &num,
+                                     buf.data(), &size)
+        || num == 0)
+        return "en";
+    // First entry runs until its terminating null; wstring constructor
+    // from c_str() stops there.
+    std::string out = to_utf8(buf.c_str());
+    for (char &c : out)
+        if (c == '-') c = '_';
+    return out;
+}
+
 // --- Win32 + DX11 entry point ---
 
 static ID3D11Device *g_device = nullptr;
@@ -477,6 +509,8 @@ static LRESULT CALLBACK wnd_proc(HWND hWnd, UINT msg,
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 {
+    lang_init();
+
     ImGui_ImplWin32_EnableDpiAwareness();
 
     // Register window class

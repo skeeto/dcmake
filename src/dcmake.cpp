@@ -1,5 +1,6 @@
 #include "dap.hpp"
 #include "highlight.hpp"
+#include "i18n.hpp"
 #include "icon_font.hpp"
 #include "jetbrains_mono_font.hpp"
 #include "roboto_font.hpp"
@@ -74,7 +75,7 @@ static void render_toolbar(Debugger *dbg)
         } else if (stopped) {
             dap_request(dbg, "continue", {{"threadId", dbg->thread_id}});
             dbg->state = DapState::RUNNING;
-            dbg->status = "Running";
+            dbg->status = tr(STR_RUNNING);
         } else if (dbg->state == DapState::RUNNING) {
             dap_request(dbg, "pause", {{"threadId", dbg->thread_id}});
         }
@@ -86,7 +87,7 @@ static void render_toolbar(Debugger *dbg)
         } else if (stopped) {
             dap_request(dbg, "next", {{"threadId", dbg->thread_id}});
             dbg->state = DapState::RUNNING;
-            dbg->status = "Running";
+            dbg->status = tr(STR_RUNNING);
         }
     }
     if (ImGui::IsKeyPressed(ImGuiKey_F11)) {
@@ -94,7 +95,7 @@ static void render_toolbar(Debugger *dbg)
             if (stopped) {
                 dap_request(dbg, "stepOut", {{"threadId", dbg->thread_id}});
                 dbg->state = DapState::RUNNING;
-                dbg->status = "Running";
+                dbg->status = tr(STR_RUNNING);
             }
         } else if (editable) {
             dbg->pause_at_entry = true;
@@ -102,7 +103,7 @@ static void render_toolbar(Debugger *dbg)
         } else if (stopped) {
             dap_request(dbg, "stepIn", {{"threadId", dbg->thread_id}});
             dbg->state = DapState::RUNNING;
-            dbg->status = "Running";
+            dbg->status = tr(STR_RUNNING);
         }
     }
     if (ImGui::IsKeyPressed(ImGuiKey_F9)) {
@@ -135,7 +136,7 @@ static void render_toolbar(Debugger *dbg)
             dcmake_start(dbg);
         }
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-            ImGui::SetTooltip("Start (F5)");
+            ImGui::SetTooltip("%s", tr(STR_TT_START));
     } else if (dbg->state == DapState::RUNNING ||
                dbg->state == DapState::CONNECTING ||
                dbg->state == DapState::INITIALIZING) {
@@ -143,15 +144,15 @@ static void render_toolbar(Debugger *dbg)
             dap_request(dbg, "pause", {{"threadId", dbg->thread_id}});
         }
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-            ImGui::SetTooltip("Pause (F5)");
+            ImGui::SetTooltip("%s", tr(STR_TT_PAUSE));
     } else {
         if (ImGui::Button(ICON_DEBUG_CONTINUE)) {
             dap_request(dbg, "continue", {{"threadId", dbg->thread_id}});
             dbg->state = DapState::RUNNING;
-            dbg->status = "Running";
+            dbg->status = tr(STR_RUNNING);
         }
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-            ImGui::SetTooltip("Continue (F5)");
+            ImGui::SetTooltip("%s", tr(STR_TT_CONTINUE));
     }
 
     // Stop button (Shift+F5)
@@ -162,7 +163,7 @@ static void render_toolbar(Debugger *dbg)
     }
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort |
                              ImGuiHoveredFlags_AllowWhenDisabled))
-        ImGui::SetTooltip("Stop (Shift+F5)");
+        ImGui::SetTooltip("%s", tr(STR_TT_STOP));
     ImGui::EndDisabled();
 
     // Restart button (Ctrl+Shift+F5)
@@ -175,7 +176,7 @@ static void render_toolbar(Debugger *dbg)
     }
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort |
                              ImGuiHoveredFlags_AllowWhenDisabled))
-        ImGui::SetTooltip("Restart (Ctrl+Shift+F5)");
+        ImGui::SetTooltip("%s", tr(STR_TT_RESTART));
     ImGui::EndDisabled();
 
     // Step buttons — also start cmake from idle (with pause at entry)
@@ -188,12 +189,12 @@ static void render_toolbar(Debugger *dbg)
         } else {
             dap_request(dbg, "next", {{"threadId", dbg->thread_id}});
             dbg->state = DapState::RUNNING;
-            dbg->status = "Running";
+            dbg->status = tr(STR_RUNNING);
         }
     }
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort |
                              ImGuiHoveredFlags_AllowWhenDisabled))
-        ImGui::SetTooltip("Step Over (F10)");
+        ImGui::SetTooltip("%s", tr(STR_TT_STEP_OVER));
     ImGui::SameLine();
     if (ImGui::Button(ICON_DEBUG_STEP_INTO)) {
         if (editable) {
@@ -202,23 +203,23 @@ static void render_toolbar(Debugger *dbg)
         } else {
             dap_request(dbg, "stepIn", {{"threadId", dbg->thread_id}});
             dbg->state = DapState::RUNNING;
-            dbg->status = "Running";
+            dbg->status = tr(STR_RUNNING);
         }
     }
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort |
                              ImGuiHoveredFlags_AllowWhenDisabled))
-        ImGui::SetTooltip("Step In (F11)");
+        ImGui::SetTooltip("%s", tr(STR_TT_STEP_IN));
     ImGui::EndDisabled();
     ImGui::SameLine();
     ImGui::BeginDisabled(!stopped);
     if (ImGui::Button(ICON_DEBUG_STEP_OUT)) {
         dap_request(dbg, "stepOut", {{"threadId", dbg->thread_id}});
         dbg->state = DapState::RUNNING;
-        dbg->status = "Running";
+        dbg->status = tr(STR_RUNNING);
     }
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort |
                              ImGuiHoveredFlags_AllowWhenDisabled))
-        ImGui::SetTooltip("Step Out (Shift+F11)");
+        ImGui::SetTooltip("%s", tr(STR_TT_STEP_OUT));
     ImGui::EndDisabled();
 
     // Command line input fills the left side
@@ -226,7 +227,7 @@ static void render_toolbar(Debugger *dbg)
     ImGui::SetCursorPosX(ImGui::GetStyle().WindowPadding.x);
     ImGui::SetNextItemWidth(input_w);
     if (!editable) ImGui::BeginDisabled();
-    ImGui::InputTextWithHint("##cmdline", "(CMake arguments)", dbg->cmdline,
+    ImGui::InputTextWithHint("##cmdline", tr(STR_CMAKE_ARGS_HINT), dbg->cmdline,
                               sizeof(dbg->cmdline));
     if (!editable) ImGui::EndDisabled();
     ImGui::PopStyleVar();
@@ -419,21 +420,30 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
                             std::string name = expand_watch(dbg, inner.c_str());
                             std::string val = expand_watch(dbg, expr.c_str());
                             if (!val.empty()) {
+                                char tip[512];
+                                snprintf(tip, sizeof(tip),
+                                    tr(STR_VAR_VALUE_FMT),
+                                    name.c_str(), val.c_str());
                                 ImGui::BeginTooltip();
-                                ImGui::Text("%s = %s", name.c_str(),
-                                            val.c_str());
+                                ImGui::TextUnformatted(tip);
                                 ImGui::EndTooltip();
                             }
                         } else if (tokens[t].type == TokenType::DEFAULT) {
                             DapVariable *var = find_variable_by_name(dbg, word);
                             if (var) {
-                                ImGui::BeginTooltip();
+                                char tip[512];
                                 if (var->value.empty())
-                                    ImGui::Text("%s : %s",
-                                        var->name.c_str(), var->type.c_str());
+                                    snprintf(tip, sizeof(tip),
+                                        tr(STR_VAR_TYPE_FMT),
+                                        var->name.c_str(),
+                                        var->type.c_str());
                                 else
-                                    ImGui::Text("%s = %s",
-                                        var->name.c_str(), var->value.c_str());
+                                    snprintf(tip, sizeof(tip),
+                                        tr(STR_VAR_VALUE_FMT),
+                                        var->name.c_str(),
+                                        var->value.c_str());
+                                ImGui::BeginTooltip();
+                                ImGui::TextUnformatted(tip);
                                 ImGui::EndTooltip();
                             }
                         }
@@ -449,7 +459,7 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
         bool stopped = dbg->state == DapState::STOPPED;
         bool editable = dbg->state == DapState::IDLE ||
                         dbg->state == DapState::TERMINATED;
-        if (ImGui::MenuItem("Run to line", nullptr, false,
+        if (ImGui::MenuItem(tr(STR_RUN_TO_LINE), nullptr, false,
                             stopped || editable)) {
             dbg->run_to_path = sf->path;
             dbg->run_to_line = context_menu_line;
@@ -460,22 +470,22 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
                 send_breakpoints_for_file(dbg, sf->path);
                 dap_request(dbg, "continue", {{"threadId", dbg->thread_id}});
                 dbg->state = DapState::RUNNING;
-                dbg->status = "Running";
+                dbg->status = tr(STR_RUNNING);
             }
         }
         ImGui::Separator();
         int bp_state = has_breakpoint(dbg, sf->path, context_menu_line);
         if (bp_state == 0) {
-            if (ImGui::MenuItem("Add Breakpoint"))
+            if (ImGui::MenuItem(tr(STR_ADD_BREAKPOINT)))
                 toggle_breakpoint(dbg, sf->path, context_menu_line);
             ImGui::BeginDisabled();
-            ImGui::MenuItem("Disable Breakpoint");
-            ImGui::MenuItem("Remove Breakpoint");
+            ImGui::MenuItem(tr(STR_DISABLE_BREAKPOINT));
+            ImGui::MenuItem(tr(STR_REMOVE_BREAKPOINT));
             ImGui::EndDisabled();
         } else {
-            ImGui::MenuItem("Add Breakpoint", nullptr, false, false);
+            ImGui::MenuItem(tr(STR_ADD_BREAKPOINT), nullptr, false, false);
             if (bp_state == 1) {
-                if (ImGui::MenuItem("Disable Breakpoint")) {
+                if (ImGui::MenuItem(tr(STR_DISABLE_BREAKPOINT))) {
                     for (auto &bp : dbg->breakpoints) {
                         if (bp.path == sf->path && bp.line == context_menu_line) {
                             bp.enabled = false;
@@ -487,7 +497,7 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
                     }
                 }
             } else {
-                if (ImGui::MenuItem("Enable Breakpoint")) {
+                if (ImGui::MenuItem(tr(STR_ENABLE_BREAKPOINT))) {
                     for (auto &bp : dbg->breakpoints) {
                         if (bp.path == sf->path && bp.line == context_menu_line) {
                             bp.enabled = true;
@@ -499,7 +509,7 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
                     }
                 }
             }
-            if (ImGui::MenuItem("Remove Breakpoint"))
+            if (ImGui::MenuItem(tr(STR_REMOVE_BREAKPOINT)))
                 toggle_breakpoint(dbg, sf->path, context_menu_line);
         }
         ImGui::EndPopup();
@@ -627,7 +637,7 @@ static void render_sources(Debugger *dbg)
             }
             char prev_buf[256];
             memcpy(prev_buf, os.find_buf, sizeof(prev_buf));
-            bool enter = ImGui::InputTextWithHint("##find", "Find...",
+            bool enter = ImGui::InputTextWithHint("##find", tr(STR_HINT_FIND),
                 os.find_buf, sizeof(os.find_buf), flags);
             ImGui::PopItemWidth();
 
@@ -638,11 +648,14 @@ static void render_sources(Debugger *dbg)
             }
 
             ImGui::SameLine();
-            if (os.find_match_count > 0)
-                ImGui::Text("%d of %d",
-                    os.find_match_idx + 1, os.find_match_count);
-            else if (os.find_buf[0])
-                ImGui::TextDisabled("No results");
+            if (os.find_match_count > 0) {
+                char buf[64];
+                snprintf(buf, sizeof(buf), tr(STR_FIND_MATCH_FMT),
+                         os.find_match_idx + 1, os.find_match_count);
+                ImGui::TextUnformatted(buf);
+            } else if (os.find_buf[0]) {
+                ImGui::TextDisabled("%s", tr(STR_NO_RESULTS));
+            }
 
             bool has_matches = os.find_match_count > 0;
             ImGui::SameLine();
@@ -704,7 +717,8 @@ static void render_sources(Debugger *dbg)
                 ImGui::SetKeyboardFocusHere();
                 os.goto_focus = false;
             }
-            bool enter = ImGui::InputTextWithHint("##goto", "Line number",
+            bool enter = ImGui::InputTextWithHint("##goto",
+                tr(STR_HINT_LINE_NUMBER),
                 os.goto_buf, sizeof(os.goto_buf), flags);
             ImGui::SameLine();
             if (ImGui::SmallButton(ICON_CLOSE "##goto") ||
@@ -745,7 +759,7 @@ static void render_sources(Debugger *dbg)
 static void render_stack(Debugger *dbg)
 {
     if (!dbg->show_stack) return;
-    if (!ImGui::Begin("Call Stack", &dbg->show_stack)) {
+    if (!ImGui::Begin(tr_win(STR_CALL_STACK), &dbg->show_stack)) {
         ImGui::End();
         return;
     }
@@ -842,7 +856,7 @@ static void render_variable_rows(Debugger *dbg, std::vector<DapVariable> &vars,
                     v.fetched = true;
                     ImGui::TableNextRow();
                     ImGui::TableNextColumn();
-                    ImGui::TextDisabled("Loading...");
+                    ImGui::TextDisabled("%s", tr(STR_LOADING));
                     ImGui::TableNextColumn();
                 } else {
                     render_variable_rows(dbg, v.children, filter, depth + 1);
@@ -912,8 +926,8 @@ static void render_variable_tree(Debugger *dbg, std::vector<DapVariable> &vars,
     if (ImGui::BeginTable("##vars", 2,
             ImGuiTableFlags_Resizable |
             ImGuiTableFlags_BordersInnerV)) {
-        ImGui::TableSetupColumn("Name");
-        ImGui::TableSetupColumn("Value");
+        ImGui::TableSetupColumn(tr(STR_COL_NAME));
+        ImGui::TableSetupColumn(tr(STR_COL_VALUE));
         render_variable_rows(dbg, vars, filter);
         ImGui::EndTable();
     }
@@ -1008,13 +1022,13 @@ static std::string expand_watch(Debugger *dbg, const char *expr)
 static void render_locals(Debugger *dbg)
 {
     if (!dbg->show_locals) return;
-    if (!ImGui::Begin("Locals", &dbg->show_locals)) {
+    if (!ImGui::Begin(tr_win(STR_LOCALS), &dbg->show_locals)) {
         ImGui::End();
         return;
     }
 
     ImGui::SetNextItemWidth(-FLT_MIN);
-    ImGui::InputTextWithHint("##filter", "Filter...",
+    ImGui::InputTextWithHint("##filter", tr(STR_HINT_FILTER),
                              dbg->filter_locals, sizeof(dbg->filter_locals));
 
     if (ImGui::BeginChild("##scroll")) {
@@ -1027,14 +1041,14 @@ static void render_locals(Debugger *dbg)
                 }
                 render_variable_tree(dbg, locals->children, dbg->filter_locals);
             } else if (dbg->scopes.empty()) {
-                ImGui::TextDisabled("No scope data.");
+                ImGui::TextDisabled("%s", tr(STR_NO_SCOPE_DATA));
             } else {
                 for (auto &scope : dbg->scopes) {
                     render_variable_tree(dbg, scope.variables, dbg->filter_locals);
                 }
             }
         } else {
-            ImGui::TextDisabled("Not stopped.");
+            ImGui::TextDisabled("%s", tr(STR_NOT_STOPPED));
         }
     }
     ImGui::EndChild();
@@ -1045,13 +1059,13 @@ static void render_locals(Debugger *dbg)
 static void render_cache(Debugger *dbg)
 {
     if (!dbg->show_cache) return;
-    if (!ImGui::Begin("Cache Variables", &dbg->show_cache)) {
+    if (!ImGui::Begin(tr_win(STR_CACHE_VARIABLES), &dbg->show_cache)) {
         ImGui::End();
         return;
     }
 
     ImGui::SetNextItemWidth(-FLT_MIN);
-    ImGui::InputTextWithHint("##filter", "Filter...",
+    ImGui::InputTextWithHint("##filter", tr(STR_HINT_FILTER),
                              dbg->filter_cache, sizeof(dbg->filter_cache));
 
     if (ImGui::BeginChild("##scroll")) {
@@ -1064,10 +1078,10 @@ static void render_cache(Debugger *dbg)
                 }
                 render_variable_tree(dbg, cache->children, dbg->filter_cache);
             } else {
-                ImGui::TextDisabled("No cache data.");
+                ImGui::TextDisabled("%s", tr(STR_NO_CACHE_DATA));
             }
         } else {
-            ImGui::TextDisabled("Not stopped.");
+            ImGui::TextDisabled("%s", tr(STR_NOT_STOPPED));
         }
     }
     ImGui::EndChild();
@@ -1078,7 +1092,7 @@ static void render_cache(Debugger *dbg)
 static void render_watch(Debugger *dbg)
 {
     if (!dbg->show_watch) return;
-    if (!ImGui::Begin("Watch", &dbg->show_watch)) {
+    if (!ImGui::Begin(tr_win(STR_WATCH), &dbg->show_watch)) {
         ImGui::End();
         return;
     }
@@ -1093,9 +1107,10 @@ static void render_watch(Debugger *dbg)
     if (ImGui::BeginTable("##watches", 3,
             ImGuiTableFlags_Resizable |
             ImGuiTableFlags_BordersInnerV)) {
-        ImGui::TableSetupColumn("Name");
-        ImGui::TableSetupColumn("Value");
-        ImGui::TableSetupColumn("Scope", ImGuiTableColumnFlags_WidthFixed, 50);
+        ImGui::TableSetupColumn(tr(STR_COL_NAME));
+        ImGui::TableSetupColumn(tr(STR_COL_VALUE));
+        ImGui::TableSetupColumn(tr(STR_COL_SCOPE),
+                                ImGuiTableColumnFlags_WidthFixed, 50);
 
         int remove_idx = -1;
         int n = (int)dbg->watches.size();
@@ -1154,7 +1169,7 @@ static void render_watch(Debugger *dbg)
             // Context menu to remove (not on sentinel)
             if (!is_sentinel) {
                 if (ImGui::BeginPopupContextItem("watch_ctx")) {
-                    if (ImGui::MenuItem("Remove"))
+                    if (ImGui::MenuItem(tr(STR_REMOVE)))
                         remove_idx = i;
                     ImGui::EndPopup();
                 }
@@ -1171,7 +1186,7 @@ static void render_watch(Debugger *dbg)
                     selectable_text("##val", expanded.c_str(),
                                     expanded.size());
             } else if (!var) {
-                ImGui::TextDisabled("<not found>");
+                ImGui::TextDisabled("%s", tr(STR_NOT_FOUND));
             } else if (!var->value.empty()) {
                 selectable_text("##val", var->value.c_str(),
                                 var->value.size());
@@ -1186,7 +1201,8 @@ static void render_watch(Debugger *dbg)
                     if (locals)
                         for (auto &v : locals->children)
                             if (&v == var) { in_locals = true; break; }
-                    ImGui::TextUnformatted(in_locals ? "Local" : "Cache");
+                    ImGui::TextUnformatted(in_locals ? tr(STR_SCOPE_LOCAL)
+                                                     : tr(STR_SCOPE_CACHE));
                 } else if (stopped) {
                     ImGui::TextDisabled("--");
                 }
@@ -1207,13 +1223,13 @@ static void render_watch(Debugger *dbg)
 static void render_targets(Debugger *dbg)
 {
     if (!dbg->show_targets) return;
-    if (!ImGui::Begin("Targets", &dbg->show_targets)) {
+    if (!ImGui::Begin(tr_win(STR_TARGETS), &dbg->show_targets)) {
         ImGui::End();
         return;
     }
 
     ImGui::SetNextItemWidth(-FLT_MIN);
-    ImGui::InputTextWithHint("##filter", "Filter...",
+    ImGui::InputTextWithHint("##filter", tr(STR_HINT_FILTER),
                              dbg->filter_targets, sizeof(dbg->filter_targets));
 
     if (ImGui::BeginChild("##scroll")) {
@@ -1226,10 +1242,10 @@ static void render_targets(Debugger *dbg)
                 }
                 render_variable_tree(dbg, targets->children, dbg->filter_targets);
             } else {
-                ImGui::TextDisabled("No target data.");
+                ImGui::TextDisabled("%s", tr(STR_NO_TARGET_DATA));
             }
         } else {
-            ImGui::TextDisabled("Not stopped.");
+            ImGui::TextDisabled("%s", tr(STR_NOT_STOPPED));
         }
     }
     ImGui::EndChild();
@@ -1240,13 +1256,13 @@ static void render_targets(Debugger *dbg)
 static void render_tests(Debugger *dbg)
 {
     if (!dbg->show_tests) return;
-    if (!ImGui::Begin("Tests", &dbg->show_tests)) {
+    if (!ImGui::Begin(tr_win(STR_TESTS), &dbg->show_tests)) {
         ImGui::End();
         return;
     }
 
     ImGui::SetNextItemWidth(-FLT_MIN);
-    ImGui::InputTextWithHint("##filter", "Filter...",
+    ImGui::InputTextWithHint("##filter", tr(STR_HINT_FILTER),
                              dbg->filter_tests, sizeof(dbg->filter_tests));
 
     if (ImGui::BeginChild("##scroll")) {
@@ -1259,10 +1275,10 @@ static void render_tests(Debugger *dbg)
                 }
                 render_variable_tree(dbg, tests->children, dbg->filter_tests);
             } else {
-                ImGui::TextDisabled("No test data.");
+                ImGui::TextDisabled("%s", tr(STR_NO_TEST_DATA));
             }
         } else {
-            ImGui::TextDisabled("Not stopped.");
+            ImGui::TextDisabled("%s", tr(STR_NOT_STOPPED));
         }
     }
     ImGui::EndChild();
@@ -1273,7 +1289,7 @@ static void render_tests(Debugger *dbg)
 static void render_breakpoints_panel(Debugger *dbg)
 {
     if (!dbg->show_breakpoints) return;
-    if (!ImGui::Begin("Breakpoints", &dbg->show_breakpoints)) {
+    if (!ImGui::Begin(tr_win(STR_BREAKPOINTS), &dbg->show_breakpoints)) {
         ImGui::End();
         return;
     }
@@ -1282,21 +1298,21 @@ static void render_breakpoints_panel(Debugger *dbg)
     bool running = dbg->state != DapState::IDLE &&
                    dbg->state != DapState::TERMINATED;
     ImGui::BeginDisabled(!has_any);
-    if (ImGui::SmallButton("Enable All")) {
+    if (ImGui::SmallButton(tr(STR_ENABLE_ALL))) {
         for (auto &bp : dbg->breakpoints) bp.enabled = true;
         if (running)
             for (auto &bp : dbg->breakpoints)
                 send_breakpoints_for_file(dbg, bp.path);
     }
     ImGui::SameLine();
-    if (ImGui::SmallButton("Disable All")) {
+    if (ImGui::SmallButton(tr(STR_DISABLE_ALL))) {
         for (auto &bp : dbg->breakpoints) bp.enabled = false;
         if (running)
             for (auto &bp : dbg->breakpoints)
                 send_breakpoints_for_file(dbg, bp.path);
     }
     ImGui::SameLine();
-    if (ImGui::SmallButton("Delete All")) {
+    if (ImGui::SmallButton(tr(STR_DELETE_ALL))) {
         std::vector<LineBreakpoint> old;
         old.swap(dbg->breakpoints);
         if (running)
@@ -1363,7 +1379,7 @@ static void render_breakpoints_panel(Debugger *dbg)
 static void render_filters_panel(Debugger *dbg)
 {
     if (!dbg->show_filters) return;
-    if (!ImGui::Begin("Exception Filters", &dbg->show_filters)) {
+    if (!ImGui::Begin(tr_win(STR_EXCEPTION_FILTERS), &dbg->show_filters)) {
         ImGui::End();
         return;
     }
@@ -1417,13 +1433,13 @@ static void render_json_value(const json &j)
 static void render_dap_log(Debugger *dbg)
 {
     if (!dbg->show_dap_log) return;
-    if (!ImGui::Begin("DAP Log", &dbg->show_dap_log)) {
+    if (!ImGui::Begin(tr_win(STR_DAP_LOG), &dbg->show_dap_log)) {
         ImGui::End();
         return;
     }
 
     // Export button
-    if (ImGui::Button("Export...")) {
+    if (ImGui::Button(tr(STR_EXPORT))) {
         std::string path = platform_save_file_dialog();
         if (!path.empty()) {
             std::string out;
@@ -1439,7 +1455,12 @@ static void render_dap_log(Debugger *dbg)
         }
     }
     ImGui::SameLine();
-    ImGui::TextDisabled("(%d messages)", (int)dbg->dap_log.size());
+    {
+        char buf[64];
+        snprintf(buf, sizeof(buf), tr(STR_DAP_LOG_COUNT_FMT),
+                 (int)dbg->dap_log.size());
+        ImGui::TextDisabled("%s", buf);
+    }
 
     push_mono_font(dbg);
     if (ImGui::BeginChild("##dap_scroll")) {
@@ -1469,7 +1490,7 @@ static void render_dap_log(Debugger *dbg)
 static void render_output(Debugger *dbg)
 {
     if (!dbg->show_output) return;
-    if (!ImGui::Begin("Output", &dbg->show_output)) {
+    if (!ImGui::Begin(tr_win(STR_OUTPUT), &dbg->show_output)) {
         ImGui::End();
         return;
     }
@@ -1503,14 +1524,14 @@ static void render_ui(Debugger *dbg)
 
     // Main menu bar
     if (ImGui::BeginMainMenuBar()) {
-        if (ImGui::BeginMenu("File")) {
-            if (ImGui::MenuItem("Open File...",
+        if (ImGui::BeginMenu(tr(STR_MENU_FILE))) {
+            if (ImGui::MenuItem(tr(STR_OPEN_FILE),
                                 menu_io.ConfigMacOSXBehaviors ? "Cmd+O"
                                                               : "Ctrl+O")) {
                 std::string path = platform_open_file_dialog();
                 if (!path.empty()) open_source(dbg, path);
             }
-            if (ImGui::MenuItem("Set Working Directory...")) {
+            if (ImGui::MenuItem(tr(STR_SET_CWD))) {
                 std::string dir = platform_open_directory_dialog();
                 if (!dir.empty()) {
                     platform_chdir(dir.c_str());
@@ -1518,24 +1539,24 @@ static void render_ui(Debugger *dbg)
                 }
             }
             ImGui::Separator();
-            if (ImGui::MenuItem("Exit",
+            if (ImGui::MenuItem(tr(STR_EXIT),
                                 menu_io.ConfigMacOSXBehaviors ? "Cmd+Q"
                                                               : "Alt+F4"))
                 dbg->want_quit = true;
             ImGui::EndMenu();
         }
-        if (ImGui::BeginMenu("Edit")) {
+        if (ImGui::BeginMenu(tr(STR_MENU_EDIT))) {
             OpenSource *fs = nullptr;
             for (auto &s : dbg->open_sources)
                 if (s.path == dbg->focused_source) { fs = &s; break; }
-            if (ImGui::MenuItem("Find",
+            if (ImGui::MenuItem(tr(STR_FIND),
                                 menu_io.ConfigMacOSXBehaviors ? "Cmd+F"
                                                               : "Ctrl+F",
                                 false, fs != nullptr)) {
                 fs->find_open = true;
                 fs->find_focus = true;
             }
-            if (ImGui::MenuItem("Go to Line",
+            if (ImGui::MenuItem(tr(STR_GOTO_LINE),
                                 menu_io.ConfigMacOSXBehaviors ? "Cmd+G"
                                                               : "Ctrl+G",
                                 false, fs != nullptr)) {
@@ -1544,19 +1565,19 @@ static void render_ui(Debugger *dbg)
             }
             ImGui::EndMenu();
         }
-        if (ImGui::BeginMenu("View")) {
-            ImGui::MenuItem("Call Stack", nullptr, &dbg->show_stack);
-            ImGui::MenuItem("Locals", nullptr, &dbg->show_locals);
-            ImGui::MenuItem("Cache Variables", nullptr, &dbg->show_cache);
-            ImGui::MenuItem("Watch", nullptr, &dbg->show_watch);
-            ImGui::MenuItem("Targets", nullptr, &dbg->show_targets);
-            ImGui::MenuItem("Tests", nullptr, &dbg->show_tests);
-            ImGui::MenuItem("Breakpoints", nullptr, &dbg->show_breakpoints);
-            ImGui::MenuItem("Exception Filters", nullptr, &dbg->show_filters);
-            ImGui::MenuItem("Output", nullptr, &dbg->show_output);
-            ImGui::MenuItem("DAP Log", nullptr, &dbg->show_dap_log);
+        if (ImGui::BeginMenu(tr(STR_MENU_VIEW))) {
+            ImGui::MenuItem(tr(STR_CALL_STACK), nullptr, &dbg->show_stack);
+            ImGui::MenuItem(tr(STR_LOCALS), nullptr, &dbg->show_locals);
+            ImGui::MenuItem(tr(STR_CACHE_VARIABLES), nullptr, &dbg->show_cache);
+            ImGui::MenuItem(tr(STR_WATCH), nullptr, &dbg->show_watch);
+            ImGui::MenuItem(tr(STR_TARGETS), nullptr, &dbg->show_targets);
+            ImGui::MenuItem(tr(STR_TESTS), nullptr, &dbg->show_tests);
+            ImGui::MenuItem(tr(STR_BREAKPOINTS), nullptr, &dbg->show_breakpoints);
+            ImGui::MenuItem(tr(STR_EXCEPTION_FILTERS), nullptr, &dbg->show_filters);
+            ImGui::MenuItem(tr(STR_OUTPUT), nullptr, &dbg->show_output);
+            ImGui::MenuItem(tr(STR_DAP_LOG), nullptr, &dbg->show_dap_log);
             ImGui::Separator();
-            if (ImGui::MenuItem("Reset Layout")) {
+            if (ImGui::MenuItem(tr(STR_RESET_LAYOUT))) {
                 reset_pending = true;
                 dbg->show_stack = true;
                 dbg->show_locals = true;
@@ -1571,8 +1592,8 @@ static void render_ui(Debugger *dbg)
             }
             ImGui::EndMenu();
         }
-        if (ImGui::BeginMenu("Help")) {
-            if (ImGui::MenuItem("About"))
+        if (ImGui::BeginMenu(tr(STR_MENU_HELP))) {
+            if (ImGui::MenuItem(tr(STR_ABOUT)))
                 show_about = true;
             ImGui::EndMenu();
         }
@@ -1604,16 +1625,20 @@ static void render_ui(Debugger *dbg)
     }
 
     if (show_about) {
-        ImGui::OpenPopup("About dcmake");
+        ImGui::OpenPopup(tr_win(STR_ABOUT_DCMAKE));
         show_about = false;
     }
-    if (ImGui::BeginPopupModal("About dcmake", nullptr,
+    if (ImGui::BeginPopupModal(tr_win(STR_ABOUT_DCMAKE), nullptr,
                                ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::Text("dcmake: CMake Debugger");
-        ImGui::Text("Version %s", DCMAKE_VERSION);
+        ImGui::TextUnformatted(tr(STR_APP_NAME));
+        {
+            char buf[64];
+            snprintf(buf, sizeof(buf), tr(STR_VERSION_FMT), DCMAKE_VERSION);
+            ImGui::TextUnformatted(buf);
+        }
         ImGui::TextLinkOpenURL("https://github.com/skeeto/dcmake");
         ImGui::Spacing();
-        ImGui::SeparatorText("Third-party licenses");
+        ImGui::SeparatorText(tr(STR_THIRD_PARTY));
         ImGui::BulletText(
             "Dear ImGui -- Copyright (C) 2014-2026 Omar Cornut (MIT)");
 #ifdef DCMAKE_GLFW
@@ -1629,7 +1654,7 @@ static void render_ui(Debugger *dbg)
         ImGui::BulletText(
             "JetBrains Mono -- Copyright (C) 2020 JetBrains (OFL 1.1)");
         ImGui::Spacing();
-        if (ImGui::Button("OK", ImVec2(120, 0)))
+        if (ImGui::Button(tr(STR_OK), ImVec2(120, 0)))
             ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }
@@ -1883,7 +1908,7 @@ void dcmake_init(Debugger *dbg)
         16.0f * s, &mono_icon_cfg, mono_icon_ranges);
 
     dbg->state = DapState::IDLE;
-    dbg->status = "Ready";
+    dbg->status = tr(STR_READY);
 }
 
 void dcmake_start(Debugger *dbg)
@@ -1912,7 +1937,7 @@ void dcmake_start(Debugger *dbg)
     dbg->filter_tests[0] = '\0';
 
     dbg->state = DapState::CONNECTING;
-    dbg->status = "Running";
+    dbg->status = tr(STR_RUNNING);
 
     if (!platform_launch(dbg, dbg->cmdline)) {
         dbg->state = DapState::TERMINATED;
@@ -1929,7 +1954,7 @@ void dcmake_start(Debugger *dbg)
 
     // Begin DAP handshake
     dbg->state = DapState::INITIALIZING;
-    dbg->status = "Running";
+    dbg->status = tr(STR_RUNNING);
     dap_request(dbg, "initialize", {
         {"adapterID", "dcmake"},
         {"clientID", "dcmake"},
@@ -1977,7 +2002,7 @@ void dcmake_stop(Debugger *dbg)
     dbg->pending_scopes.clear();
     dbg->pending_scope_reqs = 0;
     dbg->cmake_paths.clear();
-    dbg->status = "Stopped";
+    dbg->status = tr(STR_STOPPED);
 }
 
 void dcmake_frame(Debugger *dbg)

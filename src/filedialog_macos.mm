@@ -58,4 +58,18 @@ std::string platform_save_file_dialog()
     }
     return {};
 }
+
+// Use the user's preferred language list (first entry) rather than
+// CFLocaleCopyCurrent -- the locale can be "en_DE" (English speaker in
+// Germany) while the UI language is Spanish, and we want the UI
+// language.
+std::string platform_language_code()
+{
+    @autoreleasepool {
+        NSArray<NSString *> *langs = [NSLocale preferredLanguages];
+        if ([langs count] == 0) return "en";
+        const char *c = [[langs objectAtIndex:0] UTF8String];
+        return c ? std::string(c) : "en";
+    }
+}
 #endif
