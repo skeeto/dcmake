@@ -200,6 +200,7 @@ void platform_set_icon(void *window);
 std::string platform_realpath(const std::string &path);
 std::string platform_save_file_dialog();
 std::string platform_now_iso8601();
+std::string platform_config_dir();
 
 // Shared logic called by the platform main loop.
 void dcmake_init(Debugger *dbg);

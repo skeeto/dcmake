@@ -53,11 +53,22 @@ target_include_directories(imgui PUBLIC
 )
 
 # --- nlohmann/json and GLFW ---
+#
+# Only macOS and Linux use the GLFW+GL3 GUI half.  Windows, Cygwin,
+# and MSYS2's msys environment all use Win32+DX11 and do not need
+# GLFW located or built, even though Cygwin/MSYS2 look like POSIX
+# to most of the rest of CMake.  Keep this branch selector in sync
+# with the four-way platform block below.
+if(WIN32 OR CYGWIN OR MSYS)
+  set(_need_glfw FALSE)
+else()
+  set(_need_glfw TRUE)
+endif()
 
 if(DEPS STREQUAL "LOCAL")
   find_package(nlohmann_json REQUIRED)
   message(STATUS "nlohmann/json: system")
-  if(NOT WIN32)
+  if(_need_glfw)
     find_package(glfw3 REQUIRED)
     message(STATUS "GLFW: system")
   endif()
@@ -67,7 +78,7 @@ else()
     set(FETCHCONTENT_SOURCE_DIR_JSON "${CMAKE_CURRENT_SOURCE_DIR}/deps/json")
     set(_json_origin "bundled")
   endif()
-  if(NOT WIN32 AND IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/deps/glfw")
+  if(_need_glfw AND IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/deps/glfw")
     set(FETCHCONTENT_SOURCE_DIR_GLFW "${CMAKE_CURRENT_SOURCE_DIR}/deps/glfw")
     set(_glfw_origin "bundled")
   endif()
@@ -80,7 +91,7 @@ else()
     if(nlohmann_json_FOUND)
       set(_json_origin "system")
     endif()
-    if(NOT WIN32)
+    if(_need_glfw)
       find_package(glfw3 QUIET)
       if(glfw3_FOUND)
         set(_glfw_origin "system")
@@ -101,7 +112,7 @@ else()
   endif()
   message(STATUS "nlohmann/json: ${_json_origin}")
 
-  if(NOT WIN32 AND NOT _glfw_origin STREQUAL "system")
+  if(_need_glfw AND NOT _glfw_origin STREQUAL "system")
     if(NOT _glfw_origin)
       set(_glfw_origin "downloaded")
     endif()
@@ -116,34 +127,41 @@ else()
     )
     FetchContent_MakeAvailable(glfw)
   endif()
-  if(NOT WIN32)
+  if(_need_glfw)
     message(STATUS "GLFW: ${_glfw_origin}")
   endif()
 endif()
 
 # --- Platform-specific build ---
+#
+# The platform layer is split into a GUI half (window/render loop,
+# dialogs, entry point) and an OS half (subprocess launch, DAP socket,
+# file I/O).  This lets Cygwin mix the Win32+DX11 GUI with POSIX OS
+# APIs.  Four valid combinations:
+#
+#   macOS            gui_glfw  + os_posix  (+ filedialog_macos.mm)
+#   Linux            gui_glfw  + os_posix
+#   Windows native   gui_win32 + os_win32  (MSVC, MinGW, MSYS2 mingw*)
+#   Cygwin / MSYS2   gui_win32 + os_posix  (msys env only — mingw*
+#                                           envs hit the WIN32 branch)
 
-if(NOT WIN32)
+if(APPLE)
   find_package(OpenGL REQUIRED)
   target_sources(imgui PRIVATE
     ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
   )
   target_link_libraries(imgui PUBLIC glfw OpenGL::GL)
-
-  if(APPLE)
-    add_executable(dcmake src/dcmake.cpp src/dap.cpp src/highlight.cpp
-                          src/platform_glfw.cpp src/filedialog_macos.mm)
-    target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json
-                          "-framework Cocoa"
-                          "-framework UniformTypeIdentifiers")
-  else()
-    add_executable(dcmake src/dcmake.cpp src/dap.cpp src/highlight.cpp
-                          src/platform_glfw.cpp)
-    target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json)
-  endif()
+  add_executable(dcmake src/dcmake.cpp src/dap.cpp src/highlight.cpp
+                        src/platform_gui_glfw.cpp src/platform_os_posix.cpp
+                        src/filedialog_macos.mm)
+  target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json
+                        "-framework Cocoa"
+                        "-framework UniformTypeIdentifiers")
   target_compile_definitions(dcmake PRIVATE DCMAKE_GLFW)
-else()
+
+elseif(WIN32)
+  # Native Windows: MSVC or MinGW.  /SUBSYSTEM:WINDOWS via WIN32 flag.
   target_sources(imgui PRIVATE
     ${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_dx11.cpp
@@ -152,8 +170,52 @@ else()
 
   configure_file(src/dcmake.rc.in dcmake.rc @ONLY)
   add_executable(dcmake WIN32 src/dcmake.cpp src/dap.cpp src/highlight.cpp
-                              src/platform_win32.cpp ${CMAKE_CURRENT_BINARY_DIR}/dcmake.rc)
+                              src/platform_gui_win32.cpp src/platform_os_win32.cpp
+                              ${CMAKE_CURRENT_BINARY_DIR}/dcmake.rc)
   target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json comdlg32)
+
+elseif(CYGWIN OR MSYS)
+  # Cygwin or MSYS2's msys environment: Win32+DX11 GUI with POSIX OS
+  # APIs.  Both ignore the WIN32 add_executable flag, so request GUI
+  # subsystem explicitly with -mwindows.  DAP uses Cygwin AF_UNIX
+  # sockets, so the target debuggee must be the same environment's
+  # cmake (Cygwin cmake or MSYS2 pacman's msys/cmake), not a native
+  # Windows cmake.  MSYS2's mingw64/ucrt64/clang64 environments are
+  # native Windows and take the WIN32 branch above instead.
+  target_sources(imgui PRIVATE
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_dx11.cpp
+  )
+  target_link_libraries(imgui PUBLIC d3d11 dxgi d3dcompiler dwmapi)
+  # Upstream imgui_impl_dx11.cpp uses intptr_t without including
+  # <cstdint>.  MSVC and glibc pull it in transitively; Cygwin's
+  # GCC + newlib does not.  Force-include it for the whole imgui
+  # target to keep the fix minimal and bounded to this path.
+  target_compile_options(imgui PRIVATE -include cstdint)
+
+  configure_file(src/dcmake.rc.in dcmake.rc @ONLY)
+  add_executable(dcmake src/dcmake.cpp src/dap.cpp src/highlight.cpp
+                        src/platform_gui_win32.cpp src/platform_os_posix.cpp
+                        ${CMAKE_CURRENT_BINARY_DIR}/dcmake.rc)
+  # ole32 is for CoTaskMemFree (freeing the PIDL returned by
+  # SHBrowseForFolderW).  MSVC auto-links it via a pragma in the
+  # Windows SDK headers; Cygwin's w32api carries no such pragma.
+  target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json
+                        comdlg32 ole32)
+  target_link_options(dcmake PRIVATE -mwindows)
+
+else()
+  # Linux
+  find_package(OpenGL REQUIRED)
+  target_sources(imgui PRIVATE
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+  )
+  target_link_libraries(imgui PUBLIC glfw OpenGL::GL)
+  add_executable(dcmake src/dcmake.cpp src/dap.cpp src/highlight.cpp
+                        src/platform_gui_glfw.cpp src/platform_os_posix.cpp)
+  target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json)
+  target_compile_definitions(dcmake PRIVATE DCMAKE_GLFW)
 endif()
 
 target_compile_definitions(dcmake PRIVATE DCMAKE_VERSION="${PROJECT_VERSION}")

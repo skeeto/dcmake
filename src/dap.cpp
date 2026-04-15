@@ -98,21 +98,67 @@ void reader_thread_func(Debugger *dbg)
 
 void stdout_thread_func(Debugger *dbg)
 {
+    // cmake --debugger prints a fixed three-line preamble on stdout
+    // before it starts running the script.  These lines are noise --
+    // swallow them so the Output panel shows only the real script
+    // output (errors, message() calls, etc.).  Match by content
+    // rather than by line count so that if the script errors out
+    // before printing all three (or cmake changes the preamble),
+    // the genuine error still makes it to the UI.
+    static const char *const preamble[] = {
+        "Running with debugger on.",
+        "Waiting for debugger client to connect...",
+        "Debugger client connected.",
+    };
+    static constexpr size_t preamble_count =
+        sizeof(preamble) / sizeof(preamble[0]);
+
     char tmp[4096];
-    int skip_lines = 3;  // cmake debugger preamble
+    std::string line_buf;          // partial line across chunks
+    size_t preamble_seen = 0;
+    bool in_preamble = true;
+
     while (dbg->stdout_running.load()) {
         int n = dbg->stdout_read(dbg->platform, tmp, sizeof(tmp));
         if (n < 0) continue;   // poll timeout — recheck running flag
         if (n == 0) break;     // EOF
-        char *start = tmp;
-        char *end = tmp + n;
-        while (skip_lines > 0 && start < end) {
-            char *nl = (char *)memchr(start, '\n', (size_t)(end - start));
-            if (!nl) { start = end; break; }
-            skip_lines--;
+
+        const char *start = tmp;
+        const char *end = tmp + n;
+
+        while (in_preamble && start < end) {
+            const char *nl = (const char *)memchr(
+                start, '\n', (size_t)(end - start));
+            if (!nl) {
+                // Partial line — hold for next chunk.
+                line_buf.append(start, (size_t)(end - start));
+                start = end;
+                break;
+            }
+            line_buf.append(start, (size_t)(nl - start));
             start = nl + 1;
+
+            // Strip trailing \r so CRLF streams compare cleanly.
+            std::string line = std::move(line_buf);
+            line_buf.clear();
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+
+            if (preamble_seen < preamble_count
+                && line == preamble[preamble_seen]) {
+                preamble_seen++;
+                continue;
+            }
+
+            // First non-preamble line: forward it and switch to
+            // passthrough for the remainder of this chunk and all
+            // future chunks.
+            in_preamble = false;
+            std::lock_guard<std::mutex> lock(dbg->queue_mutex);
+            dbg->stdout_pending.append(line);
+            dbg->stdout_pending.push_back('\n');
         }
-        if (start < end) {
+
+        if (!in_preamble && start < end) {
             std::lock_guard<std::mutex> lock(dbg->queue_mutex);
             dbg->stdout_pending.append(start, (size_t)(end - start));
         }

@@ -1,8 +1,8 @@
 # dcmake: CMake debugger front-end
 
-An ImGui front end for [`cmake --debugger`][doc] communicating with
-[DAP][]. It allows stepping through and inspecting a CMake build. Supports
-at least Windows, macOS, and Linux.
+ImGui front end for [`cmake --debugger`][doc] communicating with [DAP][].
+Allows stepping through and inspecting a CMake build. Supports at least
+Windows, macOS, Linux, and Cygwin/MSYS2.
 
 ![](docs/dcmake.png)
 
@@ -13,10 +13,12 @@ On any platform:
     $ cmake -B build
     $ cmake --build build
 
-Linux distributions may need `xorg-dev` or `libwayland-dev`. File
-dialogs (Ctrl+O, Set Working Directory) use `kdialog` or `zenity`,
-tried in that order. By default dependencies are downloaded
-automatically, currently:
+Linux distributions may need `xorg-dev` or `libwayland-dev`. File dialogs
+(Ctrl+O, Set Working Directory) use `kdialog` or `zenity`, tried in that
+order. The Cygwin/MSYS2 build has a native Win32 GUI but expects to debug
+a non-native CMake, i.e. uses POSIX system interfaces and paths.
+
+By default dependencies are downloaded automatically, currently:
 
 * [Dear ImGui][] ([docking branch][])
 * [nlohmann/json][]
