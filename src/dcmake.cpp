@@ -1871,29 +1871,57 @@ void dcmake_load_config(Debugger *dbg)
 
 // --- Lifecycle ---
 
+// Pick the UI-font glyph ranges needed by the active language.
+// Keeps the atlas small: en/de/fr/es/it/pt only need the ImGui
+// default (Basic Latin + Latin-1 Supplement), while pl/ru/vi each
+// add just the one extra script they use.  Roboto-Medium has
+// glyphs for all of them; ImGui just has to be told to bake them.
+//
+// Returning nullptr gives ImGui's default range.  Language is
+// static for the lifetime of the process (no runtime switcher), so
+// a static const ImWchar[] per branch is fine — no lifetime games.
+static const ImWchar *ui_glyph_ranges_for_lang()
+{
+    const char *code = g_lang->code;
+
+    if (strcmp(code, "pl") == 0) {
+        static const ImWchar r[] = {
+            0x0020, 0x00FF, // Basic Latin + Latin-1 Supplement
+            0x0100, 0x017F, // Latin Extended-A (ą ć ę ł ń ó ś ź ż)
+            0,
+        };
+        return r;
+    }
+    if (strcmp(code, "ru") == 0) {
+        static const ImWchar r[] = {
+            0x0020, 0x00FF, // Basic Latin + Latin-1 Supplement
+            0x0400, 0x04FF, // Cyrillic
+            0,
+        };
+        return r;
+    }
+    if (strcmp(code, "vi") == 0) {
+        static const ImWchar r[] = {
+            0x0020, 0x00FF, // Basic Latin + Latin-1 Supplement
+            0x0100, 0x024F, // Latin Extended-A + B (đ Đ ơ Ơ ư Ư)
+            0x0300, 0x036F, // Combining diacritical marks
+            0x1E00, 0x1EFF, // Latin Extended Additional (tone marks)
+            0,
+        };
+        return r;
+    }
+    return nullptr; // en, de, fr, es, it, pt — ImGui default is enough
+}
+
 void dcmake_init(Debugger *dbg)
 {
     // Load fonts at physical pixel size for crisp high-DPI rendering
     ImGuiIO &io = ImGui::GetIO();
     float s = dbg->dpi_scale;
 
-    // Glyph ranges covering every translated language.  Roboto-Medium
-    // actually ships with all these glyphs (Polish, Vietnamese, Cyrillic,
-    // ...) but ImGui's default range is Basic Latin + Latin-1 only, so we
-    // have to list them explicitly or they won't be baked into the atlas.
-    // Keep the ranges in ascending, non-overlapping order — ImGui walks
-    // the array pairwise.
-    static const ImWchar ui_glyph_ranges[] = {
-        0x0020, 0x00FF, // Basic Latin + Latin-1 Supplement (en, de, fr, es, it, pt)
-        0x0100, 0x024F, // Latin Extended-A + B (pl, Vietnamese ơ/ư/đ)
-        0x0300, 0x036F, // Combining diacritical marks
-        0x0400, 0x04FF, // Cyrillic (ru)
-        0x1E00, 0x1EFF, // Latin Extended Additional (Vietnamese tone marks)
-        0,
-    };
     io.Fonts->AddFontFromMemoryCompressedTTF(
         roboto_font_compressed_data, roboto_font_compressed_size, 15.0f * s,
-        nullptr, ui_glyph_ranges);
+        nullptr, ui_glyph_ranges_for_lang());
 
     // Merge codicon icons into the UI font
     ImFontConfig cfg;
