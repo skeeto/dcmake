@@ -26,18 +26,33 @@ All source files live under `src/`:
 - `src/dap.hpp` -- DAP interface (dap_send, dap_request, process_messages, etc.)
 - `src/highlight.cpp` -- CMake syntax tokenizer
 - `src/highlight.hpp` -- Token types and tokenize_cmake prototype
-- `src/platform_glfw.cpp` -- macOS/Linux: main(), GLFW+OpenGL3 render loop
-- `src/platform_win32.cpp` -- Windows: WinMain(), Win32+DX11, named pipes + CreateProcess
+- `src/platform_gui_glfw.cpp` -- macOS/Linux GUI: main(), GLFW+OpenGL3 render loop, dialogs
+- `src/platform_gui_win32.cpp` -- Windows/Cygwin GUI: WinMain()/main(), Win32+DX11 render loop, dialogs
+- `src/platform_os_posix.cpp` -- macOS/Linux/Cygwin OS: fork/exec, AF_UNIX socket, POSIX file I/O
+- `src/platform_os_win32.cpp` -- Windows OS: CreateProcess, named pipes, job-object cleanup
+- `src/platform_win32_util.hpp` -- UTF-8/wide-string helpers shared by Win32 GUI and OS halves
 - `src/filedialog_macos.mm` -- macOS native file dialogs (NSSavePanel/UTType)
 - `src/dcmake.rc.in` -- Windows PE version resource template (VERSIONINFO)
 - `src/jetbrains_mono_font.hpp` -- Embedded JetBrains Mono (code/mono panels)
 - `src/roboto_font.hpp` -- Embedded Roboto (UI font)
 - `src/icon_font.hpp` -- Embedded Codicons 0.0.45 (toolbar/gutter icons)
-- `CMakeLists.txt` -- FetchContent for nlohmann/json, Dear ImGui, GLFW
+- `CMakeLists.txt` -- FetchContent deps, four-way platform branch (APPLE/WIN32/CYGWIN/Linux)
 
-Platform files own the entry point, render loop, pipe creation, and subprocess
-management. They implement `platform_launch` and `platform_cleanup`, and fill
-in function pointers (`pipe_read`, `pipe_write`, `pipe_shutdown`) plus a
+The platform layer is split into a GUI half (entry point, window, render loop,
+file dialogs) and an OS half (subprocess launch, DAP socket/pipe, file I/O,
+config directory).  The two halves compose at link time:
+
+| Platform            | GUI half           | OS half            |
+|---------------------|--------------------|--------------------|
+| macOS               | `platform_gui_glfw`  | `platform_os_posix`  |
+| Linux               | `platform_gui_glfw`  | `platform_os_posix`  |
+| Windows (native)    | `platform_gui_win32` | `platform_os_win32`  |
+| Cygwin / MSYS2 msys | `platform_gui_win32` | `platform_os_posix`  |
+
+macOS also links `filedialog_macos.mm` for Cocoa dialog overrides.
+
+The OS half implements `platform_launch` and `platform_cleanup`, and fills in
+function pointers (`pipe_read`, `pipe_write`, `pipe_shutdown`) plus a
 `void *platform` context on the Debugger struct. The shared code in
 `src/dcmake.cpp` and `src/dap.cpp` uses these for all I/O — no
 platform-specific includes in shared code.
@@ -46,18 +61,20 @@ platform-specific includes in shared code.
 
 All via FetchContent with SHA256 hashes. Dear ImGui has no CMakeLists.txt so
 we build it as a static library ourselves and conditionally add backend
-sources (GLFW+OpenGL3 on POSIX, Win32+DX11 on Windows).
+sources (GLFW+OpenGL3 on macOS/Linux, Win32+DX11 on Windows/Cygwin/MSYS2).
 
 ## DAP pipe mechanism
 
 CMake is the pipe server. We are the client. Each platform implements this in
 `platform_launch`:
 
-**POSIX** (`platform_glfw.cpp`): Unix domain socket at `/tmp/dcmake-<pid>.sock`.
+**POSIX** (`platform_os_posix.cpp`): Unix domain socket at `/tmp/dcmake-<pid>.sock`.
 CMake binds/listens/accepts. We `fork`/`exec` cmake, then retry `connect()`
 in a loop (10ms intervals, up to ~5s). I/O via `read()`/`write()` on the fd.
+Used on macOS, Linux, and Cygwin/MSYS2 (Cygwin AF_UNIX sockets talk to
+Cygwin cmake; native Windows cmake requires the Win32 OS half).
 
-**Windows** (`platform_win32.cpp`): Named pipe at `\\.\pipe\dcmake-<pid>`.
+**Windows** (`platform_os_win32.cpp`): Named pipe at `\\.\pipe\dcmake-<pid>`.
 CMake calls `CreateNamedPipeA` + `ConnectNamedPipe`. We `CreateProcessA` cmake,
 then retry `CreateFileA` to open the pipe. I/O via synchronous `ReadFile`/`WriteFile`.
 
