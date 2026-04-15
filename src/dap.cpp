@@ -583,6 +583,14 @@ static void handle_event(Debugger *dbg, const json &msg)
             send_breakpoints_for_file(dbg, f);
         }
 
+        // CMake does not auto-stop on entry -- we fake it by queueing
+        // a pause request before configurationDone.  cmake's session
+        // thread processes requests in order, so the PauseRequest
+        // flag is already set by the time the first function call
+        // checks it.  Reversing the order (or dropping the pause)
+        // lets cmake run straight through to the end of the script.
+        // See AGENTS.md "CMake debugger gotchas" and upstream
+        // cmDebuggerAdapter.cxx:386-421.
         if (dbg->pause_at_entry) {
             dap_request(dbg, "pause", {{"threadId", 0}});
         }
