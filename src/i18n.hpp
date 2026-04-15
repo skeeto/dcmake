@@ -125,6 +125,13 @@ struct LangTable {
 
 extern const LangTable lang_en;
 extern const LangTable lang_de;
+extern const LangTable lang_es;
+extern const LangTable lang_fr;
+extern const LangTable lang_it;
+extern const LangTable lang_pl;
+extern const LangTable lang_pt;
+extern const LangTable lang_ru;
+extern const LangTable lang_vi;
 
 // Active language table.  Defaults to &lang_en until lang_init() runs.
 extern const LangTable *g_lang;

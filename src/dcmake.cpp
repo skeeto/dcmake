@@ -1876,8 +1876,24 @@ void dcmake_init(Debugger *dbg)
     // Load fonts at physical pixel size for crisp high-DPI rendering
     ImGuiIO &io = ImGui::GetIO();
     float s = dbg->dpi_scale;
+
+    // Glyph ranges covering every translated language.  Roboto-Medium
+    // actually ships with all these glyphs (Polish, Vietnamese, Cyrillic,
+    // ...) but ImGui's default range is Basic Latin + Latin-1 only, so we
+    // have to list them explicitly or they won't be baked into the atlas.
+    // Keep the ranges in ascending, non-overlapping order — ImGui walks
+    // the array pairwise.
+    static const ImWchar ui_glyph_ranges[] = {
+        0x0020, 0x00FF, // Basic Latin + Latin-1 Supplement (en, de, fr, es, it, pt)
+        0x0100, 0x024F, // Latin Extended-A + B (pl, Vietnamese ơ/ư/đ)
+        0x0300, 0x036F, // Combining diacritical marks
+        0x0400, 0x04FF, // Cyrillic (ru)
+        0x1E00, 0x1EFF, // Latin Extended Additional (Vietnamese tone marks)
+        0,
+    };
     io.Fonts->AddFontFromMemoryCompressedTTF(
-        roboto_font_compressed_data, roboto_font_compressed_size, 15.0f * s);
+        roboto_font_compressed_data, roboto_font_compressed_size, 15.0f * s,
+        nullptr, ui_glyph_ranges);
 
     // Merge codicon icons into the UI font
     ImFontConfig cfg;
