@@ -18,9 +18,9 @@ endif()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(DEPS "AUTO" CACHE STRING
-    "Dependency resolution for json and GLFW: AUTO, DOWNLOAD, or LOCAL")
-set_property(CACHE DEPS PROPERTY STRINGS AUTO DOWNLOAD LOCAL)
+set(DEPS "FETCH" CACHE STRING
+    "Dependency resolution for json and GLFW: FETCH or LOCAL")
+set_property(CACHE DEPS PROPERTY STRINGS FETCH LOCAL)
 
 # --- Dear ImGui (always bundled or downloaded) ---
 
@@ -73,47 +73,26 @@ if(DEPS STREQUAL "LOCAL")
     message(STATUS "GLFW: system")
   endif()
 else()
-  # Point FetchContent at bundled sources if present
+  # Use bundled sources under deps/ when present, otherwise download.
   if(IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/deps/json")
     set(FETCHCONTENT_SOURCE_DIR_JSON "${CMAKE_CURRENT_SOURCE_DIR}/deps/json")
     set(_json_origin "bundled")
+  else()
+    set(_json_origin "downloaded")
   endif()
-  if(_need_glfw AND IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/deps/glfw")
-    set(FETCHCONTENT_SOURCE_DIR_GLFW "${CMAKE_CURRENT_SOURCE_DIR}/deps/glfw")
-    set(_glfw_origin "bundled")
-  endif()
-
-  # AUTO fallback: if disconnected and no bundled sources, try system
-  if(DEPS STREQUAL "AUTO"
-     AND NOT DEFINED FETCHCONTENT_SOURCE_DIR_JSON
-     AND FETCHCONTENT_FULLY_DISCONNECTED)
-    find_package(nlohmann_json QUIET)
-    if(nlohmann_json_FOUND)
-      set(_json_origin "system")
-    endif()
-    if(_need_glfw)
-      find_package(glfw3 QUIET)
-      if(glfw3_FOUND)
-        set(_glfw_origin "system")
-      endif()
-    endif()
-  endif()
-
-  if(NOT _json_origin STREQUAL "system")
-    if(NOT _json_origin)
-      set(_json_origin "downloaded")
-    endif()
-    FetchContent_Declare(
-      json
-      URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
-      URL_HASH SHA256=d6c65aca6b1ed68e7a182f4757257b107ae403032760ed6ef121c9d55e81757d
-    )
-    FetchContent_MakeAvailable(json)
-  endif()
+  FetchContent_Declare(
+    json
+    URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+    URL_HASH SHA256=d6c65aca6b1ed68e7a182f4757257b107ae403032760ed6ef121c9d55e81757d
+  )
+  FetchContent_MakeAvailable(json)
   message(STATUS "nlohmann/json: ${_json_origin}")
 
-  if(_need_glfw AND NOT _glfw_origin STREQUAL "system")
-    if(NOT _glfw_origin)
+  if(_need_glfw)
+    if(IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/deps/glfw")
+      set(FETCHCONTENT_SOURCE_DIR_GLFW "${CMAKE_CURRENT_SOURCE_DIR}/deps/glfw")
+      set(_glfw_origin "bundled")
+    else()
       set(_glfw_origin "downloaded")
     endif()
     set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
@@ -126,8 +105,6 @@ else()
       URL_HASH SHA256=b5ec004b2712fd08e8861dc271428f048775200a2df719ccf575143ba749a3e9
     )
     FetchContent_MakeAvailable(glfw)
-  endif()
-  if(_need_glfw)
     message(STATUS "GLFW: ${_glfw_origin}")
   endif()
 endif()

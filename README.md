@@ -33,8 +33,7 @@ The `DEPS` variable controls how nlohmann/json and GLFW are resolved:
 
 | Value | Behavior |
 |-------|----------|
-| `AUTO` (default) | bundled → downloaded → local |
-| `DOWNLOAD` | bundled → downloaded |
+| `FETCH` (default) | bundled → downloaded |
 | `LOCAL` | system `find_package` only |
 
 Dear ImGui is always bundled or downloaded because no distributions
