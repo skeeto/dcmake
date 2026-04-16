@@ -107,31 +107,25 @@ directory:
 | Linux/macOS | `$XDG_CONFIG_HOME/dcmake/` or `~/.config/dcmake/` |
 | Windows | `%XDG_CONFIG_HOME%/dcmake/`, `%HOME%/.config/dcmake/`, or `%AppData%\dcmake\` |
 
-## Known CMake bugs
+## Bugs in CMake before version 4.4.0
 
-CMake's DAP debugger inconsistently normalizes paths on case-insensitive
-filesystems (macOS HFS+, Windows NTFS). When a path differs between the
+CMake's DAP debugger [inconsistently normalizes paths on case-insensitive
+filesystems][case] (macOS HFS+, Windows NTFS). When a path differs between
 DAP client and the command line — e.g. a breakpoint set on `Test.cmake`
 while CMake was invoked with `cmake -P test.cmake` — the breakpoint may
-not trip. On macOS, dcmake mitigates this by re-sending breakpoints using
-CMake's version of the path, but this only activates if CMake stops for
-some other reason, e.g. pause on entry. On Windows, CMake's
-`GetActualCaseForPath` normalizes the `setBreakpoints` path but not its
-internal execution paths, so no client-side workaround is possible.
-Therefore, **use the canonical path case in command line arguments and
-includes**. This is [fixed in w64devkit's CMake][patch].
+not trip. So debugging older CMake builds, use the canonical path case in
+command line arguments and includes.
 
-If the debuggee is older than CMake 4.4.0, and dcmake is abruptly stopped
-on a non-Windows host, the CMake debuggee may [get stuck in an infinite
-loop][loop], requiring manual cleanup. This was fixed upstream. On Windows
-dcmake uses Job Objects, circumventing the bug. Other supported platforms
-do not have the equivalent functionality.
+If dcmake is abruptly stopped on a non-Windows host, the CMake debuggee
+may [get stuck in an infinite loop][loop], requiring manual cleanup.
+
+Both issues were fixed in CMake 4.4.0.
 
 
-[patch]: https://github.com/skeeto/w64devkit/blob/master/src/cmake-debugger-realpath.patch
 [DAP]: https://microsoft.github.io/debug-adapter-protocol/
 [Dear ImGui]: https://github.com/ocornut/imgui
 [GLFW]: https://www.glfw.org/
+[case]: https://gitlab.kitware.com/cmake/cmake/-/work_items/27750
 [doc]: https://cmake.org/cmake/help/latest/manual/cmake.1.html#cmdoption-cmake-debugger
 [docking branch]: https://github.com/ocornut/imgui/wiki/Docking
 [loop]: https://gitlab.kitware.com/cmake/cmake/-/work_items/27743
