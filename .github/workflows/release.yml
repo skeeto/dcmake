@@ -4,8 +4,8 @@ on:
     tags: ['v*']
 
 permissions:
-  contents: write
-  id-token: write
+  contents: write   # gh release create
+  id-token: write   # aas-sign OIDC handshake
 
 jobs:
   build:
@@ -38,59 +38,33 @@ jobs:
       - name: Upload dcmake.exe
         uses: actions/upload-artifact@v4
         with:
-          name: dcmake-unsigned
+          name: dcmake-exe
           path: build/dcmake.exe
 
-  sign:
+  sign-and-release:
     needs: build
-    runs-on: windows-latest
-    environment: release
-    steps:
-      - name: Download dcmake.exe
-        uses: actions/download-artifact@v4
-        with:
-          name: dcmake-unsigned
-
-      - name: Azure login
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          allow-no-subscriptions: true
-
-      - name: Sign dcmake.exe
-        uses: azure/trusted-signing-action@v0.5.0
-        with:
-          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          endpoint: ${{ secrets.TRUSTED_SIGNING_ENDPOINT }}
-          trusted-signing-account-name: ${{ secrets.TRUSTED_SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ secrets.CERTIFICATE_PROFILE }}
-          files-folder: ${{ github.workspace }}
-          files-folder-filter: exe
-          file-digest: SHA256
-          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-          timestamp-digest: SHA256
-
-      - name: Upload signed dcmake.exe
-        uses: actions/upload-artifact@v4
-        with:
-          name: dcmake-signed
-          path: dcmake.exe
-
-  release:
-    needs: [build, sign]
     runs-on: ubuntu-latest
+    environment: release
     steps:
       - name: Download source tarball
         uses: actions/download-artifact@v4
         with:
           name: source-tarball
 
-      - name: Download signed dcmake.exe
+      - name: Download dcmake.exe
         uses: actions/download-artifact@v4
         with:
-          name: dcmake-signed
+          name: dcmake-exe
+
+      - name: Sign dcmake.exe
+        uses: skeeto/aas-sign@v0.2.0
+        with:
+          endpoint:  ${{ secrets.TRUSTED_SIGNING_ENDPOINT }}
+          account:   ${{ secrets.TRUSTED_SIGNING_ACCOUNT }}
+          profile:   ${{ secrets.CERTIFICATE_PROFILE }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          files: dcmake.exe
 
       - name: Create release
         env:
