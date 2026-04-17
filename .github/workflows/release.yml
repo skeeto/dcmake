@@ -97,8 +97,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION=${GITHUB_REF_NAME#v}
+          # Tags like v1.8.0-rcN are release-candidate test runs: publish
+          # as a draft prerelease so they don't trigger release immutability
+          # and can be deleted/retried freely.
+          FLAGS=()
+          if [[ "$VERSION" == *-rc* ]]; then
+            FLAGS+=(--draft --prerelease)
+          fi
           gh release create "$GITHUB_REF_NAME" \
             --repo "$GITHUB_REPOSITORY" \
             --title "$VERSION" \
+            "${FLAGS[@]}" \
             dcmake-${VERSION}.tar.gz \
             dcmake.exe
