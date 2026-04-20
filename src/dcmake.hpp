@@ -92,6 +92,7 @@ struct ExceptionFilter {
     std::string filter;
     std::string label;
     bool enabled;
+    bool default_enabled;   // server-reported default, for "Reset to defaults"
 };
 
 struct Debugger {

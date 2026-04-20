@@ -1377,6 +1377,18 @@ static void render_filters_panel(Debugger *dbg)
         }
     }
 
+    if (!dbg->exception_filters.empty()) {
+        ImGui::Separator();
+        if (ImGui::Button("Reset to defaults")) {
+            for (auto &ef : dbg->exception_filters)
+                ef.enabled = ef.default_enabled;
+            if (dbg->state != DapState::IDLE &&
+                dbg->state != DapState::TERMINATED) {
+                send_exception_breakpoints(dbg);
+            }
+        }
+    }
+
     ImGui::End();
 }
 

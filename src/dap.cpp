@@ -416,17 +416,33 @@ static void handle_response(Debugger *dbg, const json &msg)
     }
 
     if (command == "initialize") {
-        // Parse exception breakpoint filters from capabilities
+        // Parse exception breakpoint filters from capabilities.  Merge
+        // with the previous run's state rather than replacing it so the
+        // user's toggles survive an F5 re-run.  Filters the new server
+        // no longer advertises drop out; new ones pick up the server's
+        // default.
         if (msg.contains("body") &&
             msg["body"].contains("exceptionBreakpointFilters")) {
-            dbg->exception_filters.clear();
-            for (auto &f : msg["body"]["exceptionBreakpointFilters"]) {
+            auto &caps = msg["body"]["exceptionBreakpointFilters"];
+            std::vector<ExceptionFilter> merged;
+            merged.reserve(caps.size());
+            for (auto &f : caps) {
                 ExceptionFilter ef;
                 ef.filter = f.value("filter", "");
                 ef.label = f.value("label", ef.filter);
-                ef.enabled = f.value("default", false);
-                dbg->exception_filters.push_back(std::move(ef));
+                ef.default_enabled = f.value("default", false);
+                auto it = std::find_if(
+                    dbg->exception_filters.begin(),
+                    dbg->exception_filters.end(),
+                    [&](const ExceptionFilter &prev) {
+                        return prev.filter == ef.filter;
+                    });
+                ef.enabled = (it != dbg->exception_filters.end())
+                           ? it->enabled
+                           : ef.default_enabled;
+                merged.push_back(std::move(ef));
             }
+            dbg->exception_filters = std::move(merged);
         }
     } else if (command == "configurationDone") {
         // Wait for stopped event
