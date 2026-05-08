@@ -91,19 +91,22 @@ static void drop_callback(GLFWwindow *window, int count, const char **paths)
 
 int main(int argc, char **argv)
 {
+    Mode early_mode = detect_mode(argc > 0 ? argv[0] : nullptr);
     if (!glfwInit()) {
-        fprintf(stderr, "dcmake: glfwInit failed\n");
+        fprintf(stderr, "%s: glfwInit failed\n", mode_appname(early_mode));
         return 1;
     }
 
     // Set up config directory and load dcmake config (need window geometry
     // before creating the window).
     Debugger dbg = {};
+    dbg.mode = early_mode;
     std::string initial_args = platform_quote_argv(argc, argv);
-    if (initial_args.empty()) initial_args = "-B build";
+    if (initial_args.empty())
+        initial_args = (dbg.mode == Mode::MUON) ? "build" : "-B build";
     snprintf(dbg.cmdline, sizeof(dbg.cmdline), "%s", initial_args.c_str());
     {
-        std::string dir = platform_config_dir();
+        std::string dir = platform_config_dir(mode_appname(dbg.mode));
         if (!dir.empty())
             dbg.ini_path = dir + "/imgui.ini";
     }
@@ -115,9 +118,11 @@ int main(int argc, char **argv)
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
 
     GLFWwindow *window = glfwCreateWindow(dbg.win_w, dbg.win_h,
-                                          "dcmake", nullptr, nullptr);
+                                          mode_appname(dbg.mode),
+                                          nullptr, nullptr);
     if (!window) {
-        fprintf(stderr, "dcmake: failed to create window\n");
+        fprintf(stderr, "%s: failed to create window\n",
+                mode_appname(dbg.mode));
         glfwTerminate();
         return 1;
     }
@@ -187,7 +192,9 @@ int main(int argc, char **argv)
             dbg.title_dirty = false;
             char cwd[1024];
             if (getcwd(cwd, sizeof(cwd))) {
-                std::string title = std::string("dcmake - ") + cwd;
+                std::string title = mode_appname(dbg.mode);
+                title += " - ";
+                title += cwd;
                 glfwSetWindowTitle(window, title.c_str());
             }
         }

@@ -181,10 +181,41 @@ static LRESULT CALLBACK wnd_proc(HWND hWnd, UINT msg,
 // no argv, and the Win32 OS half's platform_quote_argv reads
 // GetCommandLineW() directly — so WinMain passes (0, nullptr) and
 // the values are ignored at the bottom.
+// Extract argv[0] (UTF-8) from the Win32 command-line string.  Mirrors
+// the first-token logic in platform_quote_argv but keeps the program
+// name instead of skipping it.  Used for mode detection on native Win32
+// (WinMain doesn't get argv).
+static std::string extract_argv0_from_cmdline()
+{
+    const wchar_t *cmd = GetCommandLineW();
+    std::wstring argv0;
+    while (*cmd == L' ' || *cmd == L'\t') cmd++;
+    if (*cmd == L'"') {
+        cmd++;
+        while (*cmd && *cmd != L'"') argv0 += *cmd++;
+    } else {
+        while (*cmd && *cmd != L' ' && *cmd != L'\t') argv0 += *cmd++;
+    }
+    return to_utf8(argv0.c_str());
+}
+
 static int gui_win32_run(HINSTANCE hInstance, int nCmdShow,
                          int argc, char **argv)
 {
     ImGui_ImplWin32_EnableDpiAwareness();
+
+    // Mode is selected by the binary's invocation name: dcmake → CMAKE,
+    // dmuon → MUON.  Cygwin gets argv[0] from main; native Win32 WinMain
+    // doesn't, so fall back to GetCommandLineW() there.
+    Mode mode;
+    {
+        std::string argv0 = (argc > 0 && argv && argv[0])
+                              ? std::string(argv[0])
+                              : extract_argv0_from_cmdline();
+        mode = detect_mode(argv0.c_str());
+    }
+    const char *appname = mode_appname(mode);
+    std::wstring wappname = to_wide(appname);
 
     // Register window class
     WNDCLASSEXW wc = {};
@@ -194,17 +225,19 @@ static int gui_win32_run(HINSTANCE hInstance, int nCmdShow,
     wc.hInstance = hInstance;
     wc.hIcon = LoadIconW(hInstance, MAKEINTRESOURCEW(1));
     wc.hIconSm = LoadIconW(hInstance, MAKEINTRESOURCEW(1));
-    wc.lpszClassName = L"dcmake";
+    wc.lpszClassName = wappname.c_str();
     RegisterClassExW(&wc);
 
     // Set up config directory and load dcmake config (need window geometry
     // before creating the window).
     Debugger dbg = {};
+    dbg.mode = mode;
     std::string initial_args = platform_quote_argv(argc, argv);
-    if (initial_args.empty()) initial_args = "-B build";
+    if (initial_args.empty())
+        initial_args = (mode == Mode::MUON) ? "build" : "-B build";
     snprintf(dbg.cmdline, sizeof(dbg.cmdline), "%s", initial_args.c_str());
     {
-        std::string dir = platform_config_dir();
+        std::string dir = platform_config_dir(appname);
         if (!dir.empty())
             dbg.ini_path = dir + "/imgui.ini";
     }
@@ -234,7 +267,7 @@ static int gui_win32_run(HINSTANCE hInstance, int nCmdShow,
     }
 
     HWND hwnd = CreateWindowExW(
-        0, L"dcmake", L"dcmake",
+        0, wappname.c_str(), wappname.c_str(),
         WS_OVERLAPPEDWINDOW,
         init_x, init_y, phys_w, phys_h,
         nullptr, nullptr, hInstance, nullptr);
@@ -296,7 +329,8 @@ static int gui_win32_run(HINSTANCE hInstance, int nCmdShow,
             dbg.title_dirty = false;
             wchar_t cwd[MAX_PATH];
             if (GetCurrentDirectoryW(MAX_PATH, cwd)) {
-                std::wstring title = L"dcmake - ";
+                std::wstring title = wappname;
+                title += L" - ";
                 title += cwd;
                 SetWindowTextW(hwnd, title.c_str());
             }
@@ -341,7 +375,7 @@ static int gui_win32_run(HINSTANCE hInstance, int nCmdShow,
     if (g_device) g_device->Release();
 
     DestroyWindow(hwnd);
-    UnregisterClassW(L"dcmake", hInstance);
+    UnregisterClassW(wappname.c_str(), hInstance);
     return 0;
 }
 

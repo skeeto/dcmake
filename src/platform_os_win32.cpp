@@ -124,9 +124,16 @@ bool platform_launch(Debugger *dbg, const char *args)
                           + std::to_string(GetCurrentProcessId())
                           + "-" + std::to_string(launch_count++);
 
-    // Build cmake command line via cmd /c for shell variable expansion
-    std::wstring cmdline = L"cmd /c cmake --debugger --debugger-pipe=";
-    cmdline += to_wide(pipe_name.c_str());
+    // Build debuggee command line via cmd /c for shell variable expansion
+    std::wstring cmdline;
+    if (dbg->mode == Mode::MUON) {
+        // muon's -b takes the socket path adjacently (no space)
+        cmdline = L"cmd /c muon setup -b";
+        cmdline += to_wide(pipe_name.c_str());
+    } else {
+        cmdline = L"cmd /c cmake --debugger --debugger-pipe=";
+        cmdline += to_wide(pipe_name.c_str());
+    }
     cmdline += L' ';
     cmdline += to_wide(args);
 
@@ -296,7 +303,7 @@ bool platform_write_file(const char *path, const char *data, size_t len)
     return wrote == (DWORD)len;
 }
 
-std::string platform_config_dir()
+std::string platform_config_dir(const char *appname)
 {
     std::wstring dir;
     wchar_t buf[MAX_PATH];
@@ -317,7 +324,8 @@ std::string platform_config_dir()
         }
     }
     if (dir.empty()) return {};
-    dir += L"/dcmake";
+    dir += L'/';
+    dir += to_wide(appname);
     // Create directory and all parents (like mkdir -p).
     {
         std::wstring seg;

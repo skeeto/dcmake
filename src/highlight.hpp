@@ -22,3 +22,4 @@ struct Token {
 
 ImU32 token_color(TokenType type);
 std::vector<Token> tokenize_cmake(std::string_view line);
+std::vector<Token> tokenize_meson(std::string_view line);

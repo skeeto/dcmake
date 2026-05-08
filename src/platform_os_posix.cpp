@@ -119,8 +119,15 @@ bool platform_launch(Debugger *dbg, const char *args)
     unlink(p->pipe_path.c_str());
 
     // Build shell command
-    std::string cmd = "exec cmake --debugger --debugger-pipe=";
-    cmd += p->pipe_path;
+    std::string cmd;
+    if (dbg->mode == Mode::MUON) {
+        // muon's -b takes the socket path adjacently (no space)
+        cmd = "exec muon setup -b";
+        cmd += p->pipe_path;
+    } else {
+        cmd = "exec cmake --debugger --debugger-pipe=";
+        cmd += p->pipe_path;
+    }
     cmd += ' ';
     cmd += args;
 
@@ -266,7 +273,7 @@ bool platform_write_file(const char *path, const char *data, size_t len)
     return wrote == len;
 }
 
-std::string platform_config_dir()
+std::string platform_config_dir(const char *appname)
 {
     std::string dir;
     const char *xdg = getenv("XDG_CONFIG_HOME");
@@ -277,7 +284,8 @@ std::string platform_config_dir()
         dir = home ? home : ".";
         dir += "/.config";
     }
-    dir += "/dcmake";
+    dir += '/';
+    dir += appname;
     mkdir(dir.c_str(), 0755);
     return dir;
 }

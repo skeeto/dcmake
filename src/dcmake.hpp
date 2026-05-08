@@ -95,7 +95,13 @@ struct ExceptionFilter {
     bool default_enabled;   // server-reported default, for "Reset to defaults"
 };
 
+// Driven by argv[0]: "dcmake" → CMAKE, "dmuon" → MUON.  Selects
+// the launch command, default cmdline, config-dir name, window
+// title/class, syntax tokenizer, and a few small UI tweaks.
+enum struct Mode { CMAKE, MUON };
+
 struct Debugger {
+    Mode mode = Mode::CMAKE;
     DapState state = DapState::IDLE;
     int thread_id = 0;
     std::vector<StackFrame> stack;
@@ -201,7 +207,11 @@ void platform_set_icon(void *window);
 std::string platform_realpath(const std::string &path);
 std::string platform_save_file_dialog();
 std::string platform_now_iso8601();
-std::string platform_config_dir();
+std::string platform_config_dir(const char *appname);
+
+// Mode helpers.
+Mode detect_mode(const char *argv0);          // basename, strip .exe, "dmuon" → MUON
+const char *mode_appname(Mode m);             // "dcmake" or "dmuon"
 
 // Shared logic called by the platform main loop.
 void dcmake_init(Debugger *dbg);

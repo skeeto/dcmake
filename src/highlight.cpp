@@ -83,6 +83,160 @@ static bool is_cmake_boolean(std::string_view word)
     return it != booleans + n && strcmp(*it, upper) == 0;
 }
 
+// Meson keyword set: control flow, word-operators, common functions
+// and builtin objects.  Sorted for binary search.  Case-sensitive
+// (unlike CMake) since Meson is case-sensitive.
+static bool is_meson_keyword(std::string_view word)
+{
+    static const char *keywords[] = {
+        "add_global_arguments", "add_global_link_arguments",
+        "add_languages", "add_project_arguments",
+        "add_project_link_arguments", "add_test_setup",
+        "alias_target", "and",
+        "assert", "benchmark", "both_libraries", "break",
+        "build_machine", "build_target",
+        "configure_file", "continue", "custom_target",
+        "declare_dependency", "dependency", "disabler",
+        "elif", "else", "endforeach", "endif", "environment",
+        "error", "executable",
+        "files", "find_program", "foreach", "generator",
+        "get_option", "get_variable",
+        "host_machine",
+        "if", "import", "in", "include_directories", "install_data",
+        "install_emptydir", "install_headers", "install_man",
+        "install_subdir", "install_symlink",
+        "is_disabler", "is_variable",
+        "join_paths",
+        "library",
+        "meson", "message",
+        "not",
+        "or",
+        "project",
+        "range", "run_command", "run_target",
+        "set_variable", "shared_library", "shared_module",
+        "static_library", "structured_sources", "subdir",
+        "subdir_done", "subproject", "summary",
+        "target_machine", "test",
+        "unset_variable",
+        "vcs_tag", "warning",
+    };
+    constexpr int n = sizeof(keywords) / sizeof(keywords[0]);
+    char buf[64];
+    if (word.size() >= sizeof(buf)) return false;
+    memcpy(buf, word.data(), word.size());
+    buf[word.size()] = 0;
+    auto it = std::lower_bound(keywords, keywords + n, buf,
+        [](const char *a, const char *b) { return strcmp(a, b) < 0; });
+    return it != keywords + n && strcmp(*it, buf) == 0;
+}
+
+static bool is_meson_boolean(std::string_view word)
+{
+    return word == "true" || word == "false";
+}
+
+// Meson tokenizer.  Same character-by-character state machine as the
+// CMake one, with these differences: single-quote and double-quote
+// strings, triple-quoted (''') strings (single-line for now -- the
+// per-line tokenizer can't carry state across lines), no $-style
+// variable interpolation, no generator expressions.  f-strings (f'...'
+// with @var@ interpolation) are tokenized as plain strings in this
+// first cut.
+std::vector<Token> tokenize_meson(std::string_view line)
+{
+    std::vector<Token> tokens;
+    size_t i = 0;
+
+    auto emit = [&](size_t start, size_t end, TokenType type) {
+        if (end > start)
+            tokens.push_back({line.substr(start, end - start), type});
+    };
+
+    // Consume a string starting at i (pointing at the opening quote).
+    // Handles single-quote, double-quote, and triple-quoted forms.
+    auto scan_string = [&]() {
+        size_t start = i;
+        char q = line[i];
+        // Triple-quoted?
+        if (i + 2 < line.size() && line[i + 1] == q && line[i + 2] == q) {
+            i += 3;
+            while (i + 2 < line.size()) {
+                if (line[i] == q && line[i + 1] == q && line[i + 2] == q) {
+                    i += 3;
+                    emit(start, i, TokenType::STRING);
+                    return;
+                }
+                i++;
+            }
+            // Unterminated on this line -- highlight to EOL.
+            i = line.size();
+            emit(start, i, TokenType::STRING);
+            return;
+        }
+        // Single-line string
+        i++;
+        while (i < line.size() && line[i] != q) {
+            if (line[i] == '\\' && i + 1 < line.size()) i++;
+            i++;
+        }
+        if (i < line.size()) i++;  // closing quote
+        emit(start, i, TokenType::STRING);
+    };
+
+    while (i < line.size()) {
+        // Comment
+        if (line[i] == '#') {
+            emit(i, line.size(), TokenType::COMMENT);
+            break;
+        }
+
+        // String (' or " — including f-string prefix on a preceding f).
+        if (line[i] == '\'' || line[i] == '"') {
+            scan_string();
+            continue;
+        }
+
+        // Word (identifier or keyword or boolean or f-string prefix).
+        if (isalpha((unsigned char)line[i]) || line[i] == '_') {
+            size_t start = i;
+            while (i < line.size() &&
+                   (isalnum((unsigned char)line[i]) || line[i] == '_'))
+                i++;
+            std::string_view word = line.substr(start, i - start);
+
+            // f'...' / f"..." prefix: a lone "f" immediately followed
+            // by a quote is the string prefix.  Tokenize the f as the
+            // string color so the whole f"..." reads as one unit.
+            if (word.size() == 1 && word[0] == 'f' && i < line.size() &&
+                (line[i] == '\'' || line[i] == '"')) {
+                emit(start, i, TokenType::STRING);
+                scan_string();
+                continue;
+            }
+
+            if (is_meson_keyword(word))
+                emit(start, i, TokenType::KEYWORD);
+            else if (is_meson_boolean(word))
+                emit(start, i, TokenType::BOOLEAN);
+            else
+                emit(start, i, TokenType::DEFAULT);
+            continue;
+        }
+
+        // Default: accumulate non-special characters
+        {
+            size_t start = i;
+            while (i < line.size() && line[i] != '#' &&
+                   line[i] != '\'' && line[i] != '"' &&
+                   !isalpha((unsigned char)line[i]) && line[i] != '_')
+                i++;
+            emit(start, i, TokenType::DEFAULT);
+        }
+    }
+
+    return tokens;
+}
+
 std::vector<Token> tokenize_cmake(std::string_view line)
 {
     std::vector<Token> tokens;

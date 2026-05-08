@@ -27,6 +27,36 @@ using json = nlohmann::json;
 #define ICON_DEBUG_STEP_OVER   "\xee\xab\x96"  // U+EAD6
 #define ICON_DEBUG_STOP        "\xee\xab\x97"  // U+EAD7
 
+// --- Mode helpers ---
+
+const char *mode_appname(Mode m)
+{
+    return m == Mode::MUON ? "dmuon" : "dcmake";
+}
+
+Mode detect_mode(const char *argv0)
+{
+    if (!argv0 || !*argv0) return Mode::CMAKE;
+    // basename
+    const char *base = argv0;
+    for (const char *p = argv0; *p; p++) {
+        if (*p == '/' || *p == '\\') base = p + 1;
+    }
+    // strip .exe (case-insensitive)
+    size_t len = strlen(base);
+    if (len >= 4) {
+        const char *ext = base + len - 4;
+        if ((ext[0] == '.') &&
+            (ext[1] == 'e' || ext[1] == 'E') &&
+            (ext[2] == 'x' || ext[2] == 'X') &&
+            (ext[3] == 'e' || ext[3] == 'E')) {
+            len -= 4;
+        }
+    }
+    if (len == 5 && memcmp(base, "dmuon", 5) == 0) return Mode::MUON;
+    return Mode::CMAKE;
+}
+
 // --- ImGui UI ---
 
 static void push_mono_font(Debugger *dbg)
@@ -388,7 +418,9 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
             ImGui::SameLine();
 
             bool stopped = dbg->state == DapState::STOPPED;
-            auto tokens = tokenize_cmake(sf->lines[(size_t)i]);
+            auto tokens = (dbg->mode == Mode::MUON)
+                ? tokenize_meson(sf->lines[(size_t)i])
+                : tokenize_cmake(sf->lines[(size_t)i]);
             if (tokens.empty()) {
                 ImGui::TextUnformatted("");
             } else {
@@ -849,7 +881,8 @@ static void render_variable_rows(Debugger *dbg, std::vector<DapVariable> &vars,
                 }
                 ImGui::TreePop();
             }
-        } else if (v.value.find(';') != std::string::npos) {
+        } else if (dbg->mode == Mode::CMAKE &&
+                   v.value.find(';') != std::string::npos) {
             ImGui::TableNextRow();
             if (v.changed)
                 ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0,
@@ -1044,6 +1077,10 @@ static void render_locals(Debugger *dbg)
 
 static void render_cache(Debugger *dbg)
 {
+    // Cache Variables is a CMake-only concept (set(... CACHE ...)).
+    // Muon/Meson has no analog, so the panel is unconditionally
+    // hidden in muon mode.
+    if (dbg->mode == Mode::MUON) return;
     if (!dbg->show_cache) return;
     if (!ImGui::Begin("Cache Variables", &dbg->show_cache)) {
         ImGui::End();
@@ -1559,7 +1596,8 @@ static void render_ui(Debugger *dbg)
         if (ImGui::BeginMenu("View")) {
             ImGui::MenuItem("Call Stack", nullptr, &dbg->show_stack);
             ImGui::MenuItem("Locals", nullptr, &dbg->show_locals);
-            ImGui::MenuItem("Cache Variables", nullptr, &dbg->show_cache);
+            if (dbg->mode == Mode::CMAKE)
+                ImGui::MenuItem("Cache Variables", nullptr, &dbg->show_cache);
             ImGui::MenuItem("Watch", nullptr, &dbg->show_watch);
             ImGui::MenuItem("Targets", nullptr, &dbg->show_targets);
             ImGui::MenuItem("Tests", nullptr, &dbg->show_tests);
@@ -1572,7 +1610,7 @@ static void render_ui(Debugger *dbg)
                 reset_pending = true;
                 dbg->show_stack = true;
                 dbg->show_locals = true;
-                dbg->show_cache = true;
+                dbg->show_cache = (dbg->mode == Mode::CMAKE);
                 dbg->show_watch = true;
                 dbg->show_targets = true;
                 dbg->show_tests = true;
@@ -1706,7 +1744,8 @@ static void render_ui(Debugger *dbg)
         ImGui::DockBuilderDockWindow("Output", left_bottom);
         ImGui::DockBuilderDockWindow("DAP Log", left_bottom);
         ImGui::DockBuilderDockWindow("Locals", right_top);
-        ImGui::DockBuilderDockWindow("Cache Variables", right_top);
+        if (dbg->mode == Mode::CMAKE)
+            ImGui::DockBuilderDockWindow("Cache Variables", right_top);
         ImGui::DockBuilderDockWindow("Watch", right_top);
         ImGui::DockBuilderDockWindow("Targets", right_top);
         ImGui::DockBuilderDockWindow("Tests", right_top);

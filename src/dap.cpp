@@ -116,7 +116,10 @@ void stdout_thread_func(Debugger *dbg)
     char tmp[4096];
     std::string line_buf;          // partial line across chunks
     size_t preamble_seen = 0;
-    bool in_preamble = true;
+    // Only CMake emits the known preamble.  In muon mode let everything
+    // through; once muon stabilises an identifiable preamble we can
+    // teach the same filter to recognise it.
+    bool in_preamble = (dbg->mode == Mode::CMAKE);
 
     while (dbg->stdout_running.load()) {
         int n = dbg->stdout_read(dbg->platform, tmp, sizeof(tmp));
