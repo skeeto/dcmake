@@ -677,7 +677,9 @@ static void handle_event(Debugger *dbg, const json &msg)
         dbg->state = DapState::TERMINATED;
         dbg->current_source = nullptr;
         dbg->current_line = 0;
-        dbg->status = "Stopped";
+        // Keep the exit code from the preceding "exited" event
+        if (!dbg->status.starts_with("Stopped (exit"))
+            dbg->status = "Stopped";
         dap_request(dbg, "disconnect");
     } else if (event == "exited") {
         auto &body = msg["body"];

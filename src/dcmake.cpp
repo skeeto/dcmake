@@ -1989,7 +1989,8 @@ void dcmake_stop(Debugger *dbg)
     dbg->pending_scopes.clear();
     dbg->pending_scope_reqs = 0;
     dbg->cmake_paths.clear();
-    dbg->status = "Stopped";
+    if (!dbg->status.starts_with("Stopped (exit"))
+        dbg->status = "Stopped";
 }
 
 void dcmake_frame(Debugger *dbg)
