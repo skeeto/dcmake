@@ -1,0 +1,375 @@
+.\" This is free and unencumbered software released into the public domain.
+.TH DCMAKE 1 2026-10-19 dcmake
+.SH NAME
+dcmake \- graphical debugger for CMake
+.SH SYNOPSIS
+.SY dcmake
+.RI [ cmake-argument " ...]"
+.YS
+.SH DESCRIPTION
+.B dcmake
+is a debugger for the CMake language.
+It runs
+.BR cmake (1)
+with
+.BR \%\-\-debugger ,
+talks to it over the Debug Adapter Protocol, and shows the session in a
+window: the source being run, the call stack, variables, and output.
+The configuration of a project, or a script run with
+.BR \-P ,
+can be stopped at breakpoints, stepped one command at a time, and
+inspected.
+CMake 3.27 or later is required.
+.PP
+.B dcmake
+has no options of its own.
+Its arguments fill the command line field in the toolbar, as they would be
+typed to a shell, and without arguments the field holds
+.BR "\-B build" .
+Each start runs
+.B cmake \%\-\-debugger
+followed by the contents of the field, through
+.B sh \-c
+or, on native Windows,
+.BR "cmd /c" .
+So the field is shell syntax, and variables in it, such as
+.BR $HOME ,
+or
+.B %USERPROFILE%
+on Windows, expand at each start.
+The field can be edited while no session is running.
+.B cmake
+is found on the
+.BR PATH ,
+and runs in the current directory, which the window title shows.
+Under Cygwin and MSYS2, it must be that environment's own
+.BR cmake ,
+not a native Windows one.
+.PP
+.B Start
+runs
+.B cmake
+until it reaches a breakpoint, a message caught by an exception filter, or
+a
+.BR Pause .
+.B "Step Over"
+and
+.BR "Step Into" ,
+when no session is running, start one paused at the first command.
+While paused, the source view marks the current line with an arrow, and the
+panels show the state there.
+Values that changed since the previous pause are highlighted.
+The session ends when
+.B cmake
+exits or is stopped, and its output and protocol log remain until the next
+start.
+.PP
+The status at the right of the menu bar is
+.BR Ready ,
+.BR Running ,
+.B Paused
+with the reason, such as
+.B breakpoint
+or
+.BR step ,
+.B Stopped
+with the exit status of
+.B cmake
+when it exits on its own, or an error.
+.SH WINDOW
+.SS Toolbar
+The toolbar holds the command line field and buttons for
+.B Start
+(which becomes
+.B Pause
+while running and
+.B Continue
+while paused),
+.BR Stop ,
+.BR Restart ,
+.BR "Step Over" ,
+.BR "Step Into" ,
+and
+.BR "Step Out" .
+See
+.B KEYS
+for what each does.
+.SS Source view
+A file opens in a tab when execution pauses in it, or with
+.BR "Open File" ,
+from the Call Stack and Breakpoints panels, or when dropped on the window.
+.PP
+Click a line number to toggle a breakpoint on that line, drawn as a red dot,
+or as a ring while disabled.
+CMake moves a breakpoint to the next line where a command starts.
+Breakpoints are kept across sessions, and each remembers the text of its
+line: if the file changes, at the next start the breakpoint moves to the
+nearest line with the same text, up to 100 lines away.
+.PP
+Right-click a line to add, disable, enable, or remove its breakpoint, or to
+run to it:
+.B "Run to line"
+continues, or starts a session, until execution reaches that line or
+something else stops it.
+.PP
+While paused, hover over a variable reference, such as
+.B ${NAME}
+or
+.BR $CACHE{NAME} ,
+or over a bare variable name, as in
+.BR if(NAME) ,
+to see its value.
+.SS Panels
+Panels dock, stack as tabs, and float by dragging their title bars, and the
+.B View
+menu shows or hides each one.
+.TP
+.B Call Stack
+The commands being run, innermost first, with file and line.
+Click one to show its line.
+The variable panels always show the innermost one.
+.TP
+.B Locals
+The variables visible at the current line.
+.TP
+.B Cache Variables
+The cache entries, named with their types, such as
+.BR \%CMAKE_BUILD_TYPE:STRING ,
+each expanding to its properties.
+.TP
+.B Targets
+The targets defined so far in the current directory, each showing its type
+and expanding to its properties.
+.TP
+.B Tests
+The tests defined so far in the current directory.
+.TP
+.B Watch
+Expressions to evaluate at each pause.
+Type one into the empty last row, and remove it by clearing it or from its
+right-click menu.
+A bare name is looked up among the locals, then in the cache, and the Scope
+column says where it was found.
+Otherwise the references in an expression,
+.B ${NAME}
+and
+.BR $CACHE{NAME} ,
+are expanded, and they may nest, as in
+.BR ${${prefix}_FOUND} .
+.TP
+.B Breakpoints
+Every breakpoint, with a checkbox to enable it and a button to delete it.
+Click one to show its line.
+.BR "Enable All" ,
+.BR "Disable All" ,
+and
+.B "Delete All"
+act on all of them.
+.TP
+.B Exception Filters
+The kinds of message, from fatal errors to debug logging, that pause
+execution when reported.
+CMake supplies the list at the first start, with only the errors on, and
+.B "Reset to defaults"
+restores that choice.
+Changes last until
+.B dcmake
+exits.
+.TP
+.B Output
+The standard output and standard error of
+.BR cmake .
+.TP
+.B DAP Log
+Every protocol message, timestamped, each expanding to its JSON.
+Hidden by default.
+.B Export
+saves the log with one JSON object per line, with the fields
+.BR timestamp ,
+.B source
+.RB ( dcmake
+or
+.BR CMake ),
+and
+.BR message .
+.PP
+In Locals, Cache Variables, Targets, and Tests, the filter field shows only
+the entries whose name or value contains its text, ignoring case.
+A list, which is a value with semicolons, expands into its elements.
+.SS Menus
+.B File
+has
+.BR "Open File" ,
+.BR "Set Working Directory" ,
+which sets where
+.B cmake
+runs, and
+.BR Exit .
+.B Edit
+has
+.B Find
+and
+.B "Go to Line"
+for the focused source tab.
+.B View
+lists the panels, and
+.B "Reset Layout"
+restores their default arrangement and shows all of them but DAP Log.
+.B Help
+has
+.BR About ,
+with the version and third-party licenses.
+.PP
+On Linux, the file dialogs run
+.BR kdialog (1),
+or
+.BR zenity (1)
+if it is missing.
+.SH KEYS
+On macOS, Cmd takes the place of Ctrl.
+The function keys work wherever the keyboard focus is.
+.TP
+.B F5
+Start a session, which runs until something stops it.
+While paused, continue, and while running, pause.
+CMake pauses only as it begins a command.
+.TP
+.B Shift+F5
+Stop: end the session and kill
+.BR cmake .
+.TP
+.B Ctrl+Shift+F5
+Restart: stop, then start again.
+.TP
+.B F10
+Step Over: run the current command, with any function, macro, or file it
+calls, and pause at the next.
+With no session running, start one paused at its first command.
+.TP
+.B F11
+Step Into: pause at the next command run, inside the function, macro, or
+file the current command calls, if any.
+With no session running, start one as F10 does.
+.TP
+.B Shift+F11
+Step Out: run until the current function, macro, or file returns, and
+pause in its caller.
+.TP
+.B F9
+Toggle a breakpoint on the current line.
+.TP
+.B Ctrl+O
+Open a file in the source view.
+.TP
+.B Ctrl+F
+Find in the focused source tab, ignoring case.
+.B Enter
+or
+.B F3
+goes to the next match, and
+.B Shift+Enter
+or
+.B Shift+F3
+to the previous.
+.TP
+.B Ctrl+G
+Go to a line in the focused source tab.
+.TP
+.B Escape
+Close the find or go-to-line bar.
+.SH ENVIRONMENT
+.TP
+.B \%XDG_CONFIG_HOME
+.TQ
+.B HOME
+Locate the configuration directory; see
+.BR FILES .
+.TP
+.B PATH
+Searched for
+.BR cmake .
+.SH FILES
+.TP
+.I $XDG_CONFIG_HOME/dcmake/
+The configuration directory, or
+.I $HOME/.config/dcmake/
+when
+.B \%XDG_CONFIG_HOME
+is not set.
+On native Windows, when neither variable is set, it is
+.IR %APPDATA%\edcmake\e .
+It holds:
+.RS
+.TP
+.I dcmake.ini
+The breakpoints, watch expressions, panels shown, and window position and
+size, saved on exit.
+.TP
+.I imgui.ini
+The arrangement of the panels.
+.RE
+.TP
+.IR /tmp/dcmake\- pid \- n .sock
+The socket for talking to
+.BR cmake ,
+where
+.I pid
+is the process ID of
+.B dcmake
+and
+.I n
+counts its sessions.
+On native Windows it is the named pipe
+.IR \e\e.\epipe\edcmake\- pid \- n .
+.SH EXAMPLES
+Prepare to configure the project in the current directory into
+.IR build ,
+then press F5 to start:
+.PP
+.RS 4
+.EX
+dcmake
+.EE
+.RE
+.PP
+Configure another source tree into
+.IR /tmp/proj ,
+with a cache variable set:
+.PP
+.RS 4
+.EX
+dcmake \-S \(ti/src/proj \-B /tmp/proj \-DCMAKE_BUILD_TYPE=Debug
+.EE
+.RE
+.PP
+Step through a script from its first command, by pressing F10 once the
+window opens:
+.PP
+.RS 4
+.EX
+dcmake \-P script.cmake
+.EE
+.RE
+.SH BUGS
+CMake before 4.4.0 has two bugs that affect
+.BR dcmake .
+On a case-insensitive file system, a breakpoint may not trip when its path
+differs in case from the one CMake was given, such as
+.I Test.cmake
+for
+.BR "cmake \-P test.cmake" ,
+so use the true case on the command line and in
+.BR include() .
+And if
+.B dcmake
+dies abruptly, other than on Windows,
+.B cmake
+may spin forever and need to be killed by hand.
+.SH SEE ALSO
+.BR cmake (1)
+.PP
+Project page:
+.I https://github.com/skeeto/dcmake
+.PP
+Debug Adapter Protocol:
+.I https://microsoft.github.io/debug-adapter-protocol/
