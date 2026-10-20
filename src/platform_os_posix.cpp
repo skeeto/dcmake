@@ -278,6 +278,10 @@ std::string platform_config_dir()
         dir += "/.config";
     }
     dir += "/dcmake";
+    // Create directory and all parents (like mkdir -p).
+    for (size_t i = 1; i < dir.size(); i++) {
+        if (dir[i] == '/') mkdir(dir.substr(0, i).c_str(), 0755);
+    }
     mkdir(dir.c_str(), 0755);
     return dir;
 }
