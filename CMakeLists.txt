@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-set(DCMAKE_VERSION 1.7.2)
+set(DCMAKE_VERSION 1.8.0)
 option(DCMAKE_CCACHE "Use ccache if found" ON)
 if(DCMAKE_CCACHE)
   find_program(CCACHE ccache)
