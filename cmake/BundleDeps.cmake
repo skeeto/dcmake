@@ -11,8 +11,8 @@ set(JSON_HASH "d6c65aca6b1ed68e7a182f4757257b107ae403032760ed6ef121c9d55e81757d"
 set(IMGUI_URL "https://github.com/ocornut/imgui/archive/f5f6ca07be7ce0ea9eed6c04d55833bac3f6b50b.tar.gz")
 set(IMGUI_HASH "91aed5e92c1e24aada8dfd2a6933222341ec291dc29a4add49828610d5cb6765")
 
-set(GLFW_URL "https://github.com/glfw/glfw/releases/download/3.4/glfw-3.4.zip")
-set(GLFW_HASH "b5ec004b2712fd08e8861dc271428f048775200a2df719ccf575143ba749a3e9")
+set(GLFW_URL "https://github.com/glfw/glfw/releases/download/3.5.1/glfw-3.5.1.zip")
+set(GLFW_HASH "ea79bc5feffc254c87291980c2d0bce9acebb68c4983b79f961dcd2cb8a611a0")
 
 function(bundle_dep name url hash)
   set(dest "${DEPS_DIR}/${name}")

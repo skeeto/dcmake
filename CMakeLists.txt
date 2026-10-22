@@ -70,7 +70,17 @@ if(DEPS STREQUAL "LOCAL")
   message(STATUS "nlohmann/json: system")
   if(_need_glfw)
     find_package(glfw3 REQUIRED)
-    message(STATUS "GLFW: system")
+    message(STATUS "GLFW: system ${glfw3_VERSION}")
+    # Before 3.5, glfwSwapBuffers on Wayland blocks indefinitely while the
+    # window is hidden (e.g. on another workspace), so dcmake stops handling
+    # events and the compositor flags it as not responding (glfw#1350).
+    if(NOT APPLE AND glfw3_VERSION VERSION_LESS 3.5)
+      message(WARNING
+        "System GLFW ${glfw3_VERSION} is older than 3.5.  On Wayland, dcmake "
+        "will hang while its window is hidden, such as on another workspace, "
+        "and the compositor may report it as not responding.  Use GLFW 3.5 or "
+        "later, or configure with -DDEPS=FETCH.")
+    endif()
   endif()
 else()
   # Use bundled sources under deps/ when present, otherwise download.
@@ -101,8 +111,8 @@ else()
     set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
     FetchContent_Declare(
       glfw
-      URL https://github.com/glfw/glfw/releases/download/3.4/glfw-3.4.zip
-      URL_HASH SHA256=b5ec004b2712fd08e8861dc271428f048775200a2df719ccf575143ba749a3e9
+      URL https://github.com/glfw/glfw/releases/download/3.5.1/glfw-3.5.1.zip
+      URL_HASH SHA256=ea79bc5feffc254c87291980c2d0bce9acebb68c4983b79f961dcd2cb8a611a0
     )
     FetchContent_MakeAvailable(glfw)
     message(STATUS "GLFW: ${_glfw_origin}")

@@ -36,6 +36,10 @@ The `DEPS` variable controls how nlohmann/json and GLFW are resolved:
 | `FETCH` (default) | bundled → downloaded |
 | `LOCAL` | system `find_package` only |
 
+On Linux, use GLFW 3.5 or later. With older GLFW, dcmake hangs on
+Wayland while its window is hidden, such as on another workspace, and
+configuring warns about it.
+
 Dear ImGui is always bundled or downloaded because no distributions
 package the docking branch. To produce a source release tarball with
 bundled dependencies:
