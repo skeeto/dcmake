@@ -9,6 +9,7 @@
 #include <vector>
 
 struct ImFont;
+struct Palette;
 
 enum struct DapState {
     IDLE,
@@ -160,6 +161,10 @@ struct Debugger {
     bool win_maximized = false;
     bool want_quit = false;
     bool title_dirty = true;
+    int theme = 0;            // THEME_SYSTEM
+    bool sys_dark = true;     // system preference, as last reported
+    bool theme_dirty = true;  // re-resolve the theme and restyle
+    const Palette *pal = nullptr;
     bool first_layout = true;
     bool reset_layout = false;
     bool show_stack = true;
@@ -198,6 +203,7 @@ bool platform_chdir(const char *path);
 std::string platform_read_file(const char *path);
 bool platform_write_file(const char *path, const char *data, size_t len);
 void platform_set_icon(void *window);
+void platform_window_theme(void *window, bool dark);
 std::string platform_realpath(const std::string &path);
 std::string platform_save_file_dialog();
 std::string platform_now_iso8601();

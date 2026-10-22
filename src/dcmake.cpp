@@ -3,6 +3,7 @@
 #include "icon_font.hpp"
 #include "jetbrains_mono_font.hpp"
 #include "roboto_font.hpp"
+#include "theme.hpp"
 
 #include <cstdio>
 #include <cstring>
@@ -28,6 +29,18 @@ using json = nlohmann::json;
 #define ICON_DEBUG_STOP        "\xee\xab\x97"  // U+EAD7
 
 // --- ImGui UI ---
+
+static ImVec4 rgba(ImU32 c)
+{
+    return ImGui::ColorConvertU32ToFloat4(c);
+}
+
+// Scale a color's alpha by t in [0, 1].
+static ImU32 fade(ImU32 c, float t)
+{
+    ImU32 a = (ImU32)((float)((c >> IM_COL32_A_SHIFT) & 0xff) * t);
+    return (c & ~IM_COL32_A_MASK) | a << IM_COL32_A_SHIFT;
+}
 
 static void push_mono_font(Debugger *dbg)
 {
@@ -329,7 +342,7 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
                 ImGui::GetWindowDrawList()->AddRectFilled(
                     line_pos,
                     ImVec2(line_pos.x + width, line_pos.y + line_height),
-                    IM_COL32(80, 80, 30, 255));
+                    dbg->pal->curline);
             }
 
             if (line_num == os->flash_line && os->flash_time > 0) {
@@ -339,7 +352,7 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
                 ImGui::GetWindowDrawList()->AddRectFilled(
                     line_pos,
                     ImVec2(line_pos.x + width, line_pos.y + line_height),
-                    IM_COL32(220, 180, 50, (int)(alpha * 120)));
+                    fade(dbg->pal->flash, alpha));
             }
 
             // Find match highlights
@@ -353,8 +366,8 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
                                ImGui::CalcTextSize(s, s + col + needle_len).x;
                     bool is_cur = (current_match.line == line_num &&
                                    current_match.col == col);
-                    ImU32 color = is_cur ? IM_COL32(220, 180, 50, 180)
-                                        : IM_COL32(180, 140, 30, 80);
+                    ImU32 color = is_cur ? dbg->pal->findcur
+                                        : dbg->pal->findother;
                     ImGui::GetWindowDrawList()->AddRectFilled(
                         ImVec2(x0, line_pos.y),
                         ImVec2(x1, line_pos.y + line_height), color);
@@ -366,13 +379,13 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
                 ImVec2 center(line_pos.x + gutter_width * 0.5f,
                               line_pos.y + line_height * 0.5f);
                 ImGui::GetWindowDrawList()->AddCircleFilled(
-                    center, radius, IM_COL32(220, 50, 50, 255));
+                    center, radius, dbg->pal->breakpoint);
             } else if (bp_state == 2) {
                 float radius = line_height * 0.3f;
                 ImVec2 center(line_pos.x + gutter_width * 0.5f,
                               line_pos.y + line_height * 0.5f);
                 ImGui::GetWindowDrawList()->AddCircle(
-                    center, radius, IM_COL32(220, 50, 50, 255));
+                    center, radius, dbg->pal->breakpoint);
             }
 
             ImGui::TextDisabled("%*d", gutter_digits, line_num);
@@ -380,7 +393,7 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
             ImGui::SameLine();
 
             if (is_current) {
-                ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.2f, 1.0f),
+                ImGui::TextColored(rgba(dbg->pal->amber),
                                    ICON_ARROW_SMALL_RIGHT);
             } else {
                 ImGui::Dummy(ImVec2(arrow_width, 0));
@@ -393,7 +406,7 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
                 ImGui::TextUnformatted("");
             } else {
                 for (size_t t = 0; t < tokens.size(); t++) {
-                    ImU32 col = token_color(tokens[t].type);
+                    ImU32 col = token_color(tokens[t].type, dbg->pal);
                     ImGui::PushStyleColor(ImGuiCol_Text, col);
                     ImGui::TextUnformatted(tokens[t].text.data(),
                                            tokens[t].text.data() +
@@ -819,7 +832,7 @@ static void render_variable_rows(Debugger *dbg, std::vector<DapVariable> &vars,
             ImGui::TableNextRow();
             if (v.changed)
                 ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0,
-                    ImGui::GetColorU32(ImVec4(0.4f, 0.4f, 0.1f, 0.35f)));
+                    dbg->pal->changed);
             ImGui::TableNextColumn();
             bool open = ImGui::TreeNodeEx("##tree",
                 ImGuiTreeNodeFlags_AllowOverlap);
@@ -853,7 +866,7 @@ static void render_variable_rows(Debugger *dbg, std::vector<DapVariable> &vars,
             ImGui::TableNextRow();
             if (v.changed)
                 ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0,
-                    ImGui::GetColorU32(ImVec4(0.4f, 0.4f, 0.1f, 0.35f)));
+                    dbg->pal->changed);
             ImGui::TableNextColumn();
             bool open = ImGui::TreeNodeEx("##tree",
                 ImGuiTreeNodeFlags_AllowOverlap);
@@ -892,7 +905,7 @@ static void render_variable_rows(Debugger *dbg, std::vector<DapVariable> &vars,
             ImGui::TableNextRow();
             if (v.changed)
                 ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0,
-                    ImGui::GetColorU32(ImVec4(0.4f, 0.4f, 0.1f, 0.35f)));
+                    dbg->pal->changed);
             ImGui::TableNextColumn();
             ImGui::Bullet();
             ImGui::SameLine();
@@ -1122,7 +1135,7 @@ static void render_watch(Debugger *dbg)
 
             if (var && var->changed)
                 ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0,
-                    IM_COL32(80, 80, 30, 255));
+                    dbg->pal->changed);
 
             // Name column — always an editable InputText
             ImGui::TableNextColumn();
@@ -1581,6 +1594,19 @@ static void render_ui(Debugger *dbg)
                 dbg->show_output = true;
                 dbg->show_dap_log = false;
             }
+            ImGui::Separator();
+            if (ImGui::BeginMenu("Theme")) {
+                static const char *labels[THEME_COUNT] = {
+                    "System", "Dark", "Light",
+                };
+                for (int i = 0; i < THEME_COUNT; i++) {
+                    if (ImGui::MenuItem(labels[i], nullptr, dbg->theme == i)) {
+                        dbg->theme = i;
+                        dbg->theme_dirty = true;
+                    }
+                }
+                ImGui::EndMenu();
+            }
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Help")) {
@@ -1596,15 +1622,15 @@ static void render_ui(Debugger *dbg)
         case DapState::CONNECTING:
         case DapState::INITIALIZING:
         case DapState::RUNNING:
-            ImGui::TextColored(ImVec4(0.2f, 0.9f, 0.2f, 1.0f), "%s",
+            ImGui::TextColored(rgba(dbg->pal->ok), "%s",
                                dbg->status.c_str());
             break;
         case DapState::STOPPED:
-            ImGui::TextColored(ImVec4(1.0f, 0.9f, 0.2f, 1.0f), "%s",
+            ImGui::TextColored(rgba(dbg->pal->amber), "%s",
                                dbg->status.c_str());
             break;
         case DapState::TERMINATED:
-            ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "%s",
+            ImGui::TextColored(rgba(dbg->pal->bad), "%s",
                                dbg->status.c_str());
             break;
         default:
@@ -1765,6 +1791,7 @@ static void save_config(Debugger *dbg)
     out += "win_w=";            out += std::to_string(dbg->win_w);        out += '\n';
     out += "win_h=";            out += std::to_string(dbg->win_h);        out += '\n';
     out += "win_maximized=";    out += dbg->win_maximized ? '1' : '0';    out += '\n';
+    out += "theme=";            out += theme_names[dbg->theme];          out += '\n';
 
     for (auto &bp : dbg->breakpoints) {
         out += "bp\t";
@@ -1792,6 +1819,9 @@ void dcmake_load_config(Debugger *dbg)
     dbg->win_w = 1280;
     dbg->win_h = 720;
     dbg->win_maximized = false;
+    dbg->theme = THEME_SYSTEM;
+    dbg->sys_dark = true;
+    dbg->theme_dirty = true;
 
     std::string content = platform_read_file(config_path(dbg).c_str());
     if (content.empty()) return;
@@ -1853,6 +1883,10 @@ void dcmake_load_config(Debugger *dbg)
         else if (key == "win_w") dbg->win_w = std::atoi(line.c_str() + eq + 1);
         else if (key == "win_h") dbg->win_h = std::atoi(line.c_str() + eq + 1);
         else if (key == "win_maximized") dbg->win_maximized = val;
+        else if (key == "theme") {
+            int t = theme_parse(line.c_str() + eq + 1);
+            dbg->theme = t < 0 ? THEME_SYSTEM : t;
+        }
     }
 }
 

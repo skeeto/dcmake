@@ -1,10 +1,15 @@
 #include "dcmake.hpp"
+#include "theme.hpp"
 
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
 #include <string>
 
+#include <atomic>
+#include <thread>
+
+#include <dlfcn.h>
 #include <poll.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -104,6 +109,187 @@ void platform_set_icon(void *)
 {
     // Linux: window icon set via .desktop file
 }
+
+void platform_window_theme(void *, bool)
+{
+    // Linux: the window manager draws the frame
+}
+
+// The system theme comes from the XDG desktop portal's color-scheme
+// setting over D-Bus: read once at startup, then followed by a thread
+// watching its SettingChanged signal.  libdbus is loaded at run time, so
+// it is no build dependency.  Without it, or a portal, the system is dark,
+// as dcmake always was.  GNOME reports its light "Default" appearance as
+// no preference, so only an explicit dark preference means dark.
+
+// libdbus, as much as is needed here, declared by hand
+using DbusInit      = unsigned (*)();
+using DbusGet       = void    *(*)(int, void *);
+using DbusExit      = void     (*)(void *, unsigned);
+using DbusMatch     = void     (*)(void *, const char *, void *);
+using DbusRead      = unsigned (*)(void *, int);
+using DbusPop       = void    *(*)(void *);
+using DbusIsSignal  = unsigned (*)(void *, const char *, const char *);
+using DbusNewCall   = void    *(*)(const char *, const char *,
+                                   const char *, const char *);
+using DbusAppend    = unsigned (*)(void *, int, ...);
+using DbusCall      = void    *(*)(void *, void *, int, void *);
+using DbusIterInit  = unsigned (*)(void *, void *);
+using DbusIterNext  = unsigned (*)(void *);
+using DbusIterType  = int      (*)(void *);
+using DbusIterSub   = void     (*)(void *, void *);
+using DbusIterGet   = void     (*)(void *, void *);
+using DbusUnref     = void     (*)(void *);
+using DbusFlush     = void     (*)(void *);
+
+struct DbusIter {
+    void *opaque[16];  // a DBusMessageIter, 72 bytes on 64-bit hosts
+};
+
+static struct {
+    DbusGet      get;
+    DbusExit     exitondisc;
+    DbusMatch    match;
+    DbusRead     read;
+    DbusPop      pop;
+    DbusIsSignal issignal;
+    DbusNewCall  newcall;
+    DbusAppend   append;
+    DbusCall     call;
+    DbusIterInit iterinit;
+    DbusIterNext iternext;
+    DbusIterType itertype;
+    DbusIterSub  itersub;
+    DbusIterGet  iterget;
+    DbusUnref    unref;
+    DbusFlush    flush;
+} dbus;
+
+// 1 dark, 2 light, 0 no preference, as the portal reports it, or -1
+static std::atomic<int> portal_scheme{-1};
+
+// The scheme in a variant at the iterator, unwrapping nested variants
+// (the older Read method returns one inside another), or -1.
+static int portal_variant(DbusIter *it)
+{
+    while (dbus.itertype(it) == 'v') {
+        DbusIter sub = {};
+        dbus.itersub(it, &sub);
+        *it = sub;
+    }
+    if (dbus.itertype(it) != 'u') return -1;
+    unsigned scheme = 0;
+    dbus.iterget(it, &scheme);
+    return (int)scheme;
+}
+
+// The color-scheme of a SettingChanged signal, or -1 for other settings.
+static int portal_signal_scheme(void *msg)
+{
+    static const char *const want[] = {
+        "org.freedesktop.appearance", "color-scheme",
+    };
+    DbusIter it = {};
+    if (!dbus.iterinit(msg, &it)) return -1;
+    for (const char *w : want) {
+        const char *s = nullptr;
+        if (dbus.itertype(&it) != 's') return -1;
+        dbus.iterget(&it, &s);
+        if (!s || strcmp(s, w) || !dbus.iternext(&it)) return -1;
+    }
+    return portal_variant(&it);
+}
+
+// Ask the portal for color-scheme, or -1 if it does not answer.
+static int portal_read(void *conn, const char *method)
+{
+    const char *ns = "org.freedesktop.appearance";
+    const char *key = "color-scheme";
+    void *msg = dbus.newcall("org.freedesktop.portal.Desktop",
+                             "/org/freedesktop/portal/desktop",
+                             "org.freedesktop.portal.Settings", method);
+    if (!msg) return -1;
+    int scheme = -1;
+    if (dbus.append(msg, 's', &ns, 's', &key, 0)) {
+        void *reply = dbus.call(conn, msg, 500, nullptr);
+        if (reply) {
+            DbusIter it = {};
+            if (dbus.iterinit(reply, &it))
+                scheme = portal_variant(&it);
+            dbus.unref(reply);
+        }
+    }
+    dbus.unref(msg);
+    return scheme;
+}
+
+static void portal_thread(void *conn)
+{
+    while (dbus.read(conn, -1)) {
+        for (void *m; (m = dbus.pop(conn));) {
+            int scheme = -1;
+            if (dbus.issignal(m, "org.freedesktop.portal.Settings",
+                              "SettingChanged"))
+                scheme = portal_signal_scheme(m);
+            dbus.unref(m);
+            if (scheme >= 0)
+                portal_scheme.store(scheme);
+        }
+    }
+}
+
+static void system_theme_watch()
+{
+    void *h = dlopen("libdbus-1.so.3", RTLD_NOW | RTLD_LOCAL);
+    if (!h) return;
+    auto init = (DbusInit)dlsym(h, "dbus_threads_init_default");
+    dbus.get        = (DbusGet)dlsym(h, "dbus_bus_get_private");
+    dbus.exitondisc = (DbusExit)dlsym(h, "dbus_connection_set_exit_on_disconnect");
+    dbus.match      = (DbusMatch)dlsym(h, "dbus_bus_add_match");
+    dbus.read       = (DbusRead)dlsym(h, "dbus_connection_read_write");
+    dbus.pop        = (DbusPop)dlsym(h, "dbus_connection_pop_message");
+    dbus.issignal   = (DbusIsSignal)dlsym(h, "dbus_message_is_signal");
+    dbus.newcall    = (DbusNewCall)dlsym(h, "dbus_message_new_method_call");
+    dbus.append     = (DbusAppend)dlsym(h, "dbus_message_append_args");
+    dbus.call       = (DbusCall)dlsym(h, "dbus_connection_send_with_reply_and_block");
+    dbus.iterinit   = (DbusIterInit)dlsym(h, "dbus_message_iter_init");
+    dbus.iternext   = (DbusIterNext)dlsym(h, "dbus_message_iter_next");
+    dbus.itertype   = (DbusIterType)dlsym(h, "dbus_message_iter_get_arg_type");
+    dbus.itersub    = (DbusIterSub)dlsym(h, "dbus_message_iter_recurse");
+    dbus.iterget    = (DbusIterGet)dlsym(h, "dbus_message_iter_get_basic");
+    dbus.unref      = (DbusUnref)dlsym(h, "dbus_message_unref");
+    dbus.flush      = (DbusFlush)dlsym(h, "dbus_connection_flush");
+    bool ok = init && dbus.get && dbus.exitondisc && dbus.match &&
+              dbus.read && dbus.pop && dbus.issignal && dbus.newcall &&
+              dbus.append && dbus.call && dbus.iterinit && dbus.iternext &&
+              dbus.itertype && dbus.itersub && dbus.iterget && dbus.unref &&
+              dbus.flush;
+    if (!ok || !init()) return;
+
+    void *conn = dbus.get(0, nullptr);  // the session bus, privately
+    if (!conn) return;
+    dbus.exitondisc(conn, 0);
+    dbus.match(conn, "type='signal',interface='org.freedesktop.portal.Settings',"
+                     "member='SettingChanged',arg0='org.freedesktop.appearance',"
+                     "arg1='color-scheme'", nullptr);
+    dbus.flush(conn);
+
+    int scheme = portal_read(conn, "ReadOne");
+    if (scheme < 0) scheme = portal_read(conn, "Read");  // older portals
+    if (scheme >= 0) portal_scheme.store(scheme);
+
+    std::thread(portal_thread, conn).detach();
+}
+
+static bool system_dark()
+{
+    int scheme = portal_scheme.load();
+    return scheme < 0 || scheme == 1;
+}
+#else
+// filedialog_macos.mm
+void system_theme_watch();
+bool system_dark();
 #endif
 
 static void drop_callback(GLFWwindow *window, int count, const char **paths)
@@ -134,6 +320,8 @@ int main(int argc, char **argv)
             dbg.ini_path = dir + "/imgui.ini";
     }
     dcmake_load_config(&dbg);
+    system_theme_watch();
+    dbg.sys_dark = system_dark();
 
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
@@ -172,7 +360,6 @@ int main(int argc, char **argv)
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    ImGui::StyleColorsDark();
 
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 150");
@@ -209,6 +396,17 @@ int main(int argc, char **argv)
     while (!glfwWindowShouldClose(window) && !dbg.want_quit) {
         glfwPollEvents();
 
+        bool dark = system_dark();
+        if (dark != dbg.sys_dark) {
+            dbg.sys_dark = dark;
+            dbg.theme_dirty = true;
+        }
+        if (dbg.theme_dirty) {
+            dbg.theme_dirty = false;
+            theme_apply(&dbg);
+            platform_window_theme(window, dbg.pal->dark);
+        }
+
         if (dbg.title_dirty) {
             dbg.title_dirty = false;
             char cwd[1024];
@@ -228,7 +426,8 @@ int main(int argc, char **argv)
         int fb_w, fb_h;
         glfwGetFramebufferSize(window, &fb_w, &fb_h);
         glViewport(0, 0, fb_w, fb_h);
-        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+        ImVec4 clear = ImGui::ColorConvertU32ToFloat4(dbg.pal->clear);
+        glClearColor(clear.x, clear.y, clear.z, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 

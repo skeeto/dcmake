@@ -4,16 +4,16 @@
 #include <cctype>
 #include <cstring>
 
-ImU32 token_color(TokenType type)
+ImU32 token_color(TokenType type, const Palette *p)
 {
     switch (type) {
-    case TokenType::COMMENT:        return IM_COL32(106, 153, 85,  255);
-    case TokenType::STRING:         return IM_COL32(206, 145, 120, 255);
-    case TokenType::VARIABLE:       return IM_COL32(86,  206, 209, 255);
-    case TokenType::GENERATOR_EXPR: return IM_COL32(190, 132, 209, 255);
-    case TokenType::KEYWORD:        return IM_COL32(86,  156, 214, 255);
-    case TokenType::BOOLEAN:        return IM_COL32(181, 206, 168, 255);
-    default:                        return IM_COL32(212, 212, 212, 255);
+    case TokenType::COMMENT:        return p->comment;
+    case TokenType::STRING:         return p->string;
+    case TokenType::VARIABLE:       return p->variable;
+    case TokenType::GENERATOR_EXPR: return p->genex;
+    case TokenType::KEYWORD:        return p->keyword;
+    case TokenType::BOOLEAN:        return p->boolean;
+    default:                        return p->text;
     }
 }
 

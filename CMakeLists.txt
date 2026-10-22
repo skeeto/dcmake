@@ -130,6 +130,7 @@ if(APPLE)
   )
   target_link_libraries(imgui PUBLIC glfw OpenGL::GL)
   add_executable(dcmake src/dcmake.cpp src/dap.cpp src/highlight.cpp
+                        src/theme.cpp
                         src/platform_gui_glfw.cpp src/platform_os_posix.cpp
                         src/filedialog_macos.mm)
   target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json
@@ -147,9 +148,11 @@ elseif(WIN32)
 
   configure_file(src/dcmake.rc.in dcmake.rc @ONLY)
   add_executable(dcmake WIN32 src/dcmake.cpp src/dap.cpp src/highlight.cpp
+                              src/theme.cpp
                               src/platform_gui_win32.cpp src/platform_os_win32.cpp
                               ${CMAKE_CURRENT_BINARY_DIR}/dcmake.rc)
-  target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json comdlg32)
+  target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json
+                        comdlg32 advapi32)
 
 elseif(CYGWIN OR MSYS)
   # Cygwin or MSYS2's msys environment: Win32+DX11 GUI with POSIX OS
@@ -172,13 +175,14 @@ elseif(CYGWIN OR MSYS)
 
   configure_file(src/dcmake.rc.in dcmake.rc @ONLY)
   add_executable(dcmake src/dcmake.cpp src/dap.cpp src/highlight.cpp
+                        src/theme.cpp
                         src/platform_gui_win32.cpp src/platform_os_posix.cpp
                         ${CMAKE_CURRENT_BINARY_DIR}/dcmake.rc)
   # ole32 is for CoTaskMemFree (freeing the PIDL returned by
   # SHBrowseForFolderW).  MSVC auto-links it via a pragma in the
   # Windows SDK headers; Cygwin's w32api carries no such pragma.
   target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json
-                        comdlg32 ole32)
+                        comdlg32 ole32 advapi32)
   target_link_options(dcmake PRIVATE -mwindows)
 
 else()
@@ -190,8 +194,10 @@ else()
   )
   target_link_libraries(imgui PUBLIC glfw OpenGL::GL)
   add_executable(dcmake src/dcmake.cpp src/dap.cpp src/highlight.cpp
+                        src/theme.cpp
                         src/platform_gui_glfw.cpp src/platform_os_posix.cpp)
-  target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json)
+  target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json
+                        ${CMAKE_DL_LIBS})
   target_compile_definitions(dcmake PRIVATE DCMAKE_GLFW)
 endif()
 

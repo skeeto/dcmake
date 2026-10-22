@@ -4,6 +4,10 @@
 #include <string>
 #include "icon_data.h"
 
+#define GLFW_EXPOSE_NATIVE_COCOA
+#include <GLFW/glfw3.h>
+#include <GLFW/glfw3native.h>
+
 void platform_set_icon(void *)
 {
     @autoreleasepool {
@@ -57,5 +61,30 @@ std::string platform_save_file_dialog()
         }
     }
     return {};
+}
+
+// NSApp follows the system appearance, read each frame.  Windows get an
+// explicit appearance when the user picks one, which leaves NSApp alone.
+void system_theme_watch()
+{
+}
+
+bool system_dark()
+{
+    @autoreleasepool {
+        NSAppearanceName name = [NSApp.effectiveAppearance
+            bestMatchFromAppearancesWithNames:@[NSAppearanceNameAqua,
+                                                NSAppearanceNameDarkAqua]];
+        return [name isEqualToString:NSAppearanceNameDarkAqua];
+    }
+}
+
+void platform_window_theme(void *window, bool dark)
+{
+    @autoreleasepool {
+        NSWindow *w = glfwGetCocoaWindow((GLFWwindow *)window);
+        w.appearance = [NSAppearance appearanceNamed:
+            dark ? NSAppearanceNameDarkAqua : NSAppearanceNameAqua];
+    }
 }
 #endif

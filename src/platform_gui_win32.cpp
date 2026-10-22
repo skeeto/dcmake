@@ -1,4 +1,5 @@
 #include "dcmake.hpp"
+#include "theme.hpp"
 #include "platform_win32_util.hpp"
 
 #include <windows.h>
@@ -6,6 +7,7 @@
 #include <shellapi.h>
 #include <shlobj.h>
 #include <d3d11.h>
+#include <dwmapi.h>
 
 #include <imgui.h>
 #include <imgui_impl_win32.h>
@@ -110,6 +112,37 @@ void platform_set_icon(void *)
     // Icon set via .rc resource file
 }
 
+// Whether apps should be dark, per Settings > Personalization > Colors.
+// Before Windows 10 1809 there is no such value, and apps are light.
+static bool system_dark()
+{
+    DWORD v = 1, n = sizeof(v);
+    LSTATUS r = RegGetValueW(HKEY_CURRENT_USER,
+        L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+        L"AppsUseLightTheme", RRF_RT_REG_DWORD, nullptr, &v, &n);
+    return r == ERROR_SUCCESS && v == 0;
+}
+
+static int g_frame_dark = -1;  // title bar as last set, -1 for never
+
+void platform_window_theme(void *window, bool dark)
+{
+    HWND hwnd = (HWND)window;
+    if (g_frame_dark == (int)dark) return;
+    BOOL v = dark;
+    // DWMWA_USE_IMMERSIVE_DARK_MODE: 20, or 19 before Windows 10 20H1
+    HRESULT r = DwmSetWindowAttribute(hwnd, 20, &v, sizeof(v));
+    if (FAILED(r)) r = DwmSetWindowAttribute(hwnd, 19, &v, sizeof(v));
+    if (FAILED(r)) return;
+    if (g_frame_dark >= 0 && IsWindowVisible(hwnd)) {
+        // Windows 10 repaints the title bar only on activation changes
+        BOOL active = GetActiveWindow() == hwnd;
+        SendMessageW(hwnd, WM_NCACTIVATE, !active, 0);
+        SendMessageW(hwnd, WM_NCACTIVATE, active, 0);
+    }
+    g_frame_dark = dark;
+}
+
 // --- Win32 + DX11 entry point ---
 
 static ID3D11Device *g_device = nullptr;
@@ -168,6 +201,13 @@ static LRESULT CALLBACK wnd_proc(HWND hWnd, UINT msg,
         // Capture placement while the window is still valid
         GetWindowPlacement(hWnd, &g_last_placement);
         GetWindowRect(hWnd, &g_last_rect);
+        break;
+    case WM_SETTINGCHANGE:
+        if (g_dbg && lParam &&
+            !lstrcmpW((LPCWSTR)lParam, L"ImmersiveColorSet")) {
+            g_dbg->sys_dark = system_dark();
+            g_dbg->theme_dirty = true;
+        }
         break;
     case WM_DESTROY:
         PostQuitMessage(0);
@@ -239,6 +279,11 @@ static int gui_win32_run(HINSTANCE hInstance, int nCmdShow,
         init_x, init_y, phys_w, phys_h,
         nullptr, nullptr, hInstance, nullptr);
 
+    // Theme the title bar before the window is first shown
+    dbg.sys_dark = system_dark();
+    platform_window_theme(hwnd, dbg.theme == THEME_DARK ||
+                                (dbg.theme == THEME_SYSTEM && dbg.sys_dark));
+
     // Create D3D11 device and swap chain
     DXGI_SWAP_CHAIN_DESC sd = {};
     sd.BufferCount = 2;
@@ -262,7 +307,6 @@ static int gui_win32_run(HINSTANCE hInstance, int nCmdShow,
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    ImGui::StyleColorsDark();
 
     ImGui_ImplWin32_Init(hwnd);
     ImGui_ImplDX11_Init(g_device, g_context);
@@ -301,6 +345,11 @@ static int gui_win32_run(HINSTANCE hInstance, int nCmdShow,
                 SetWindowTextW(hwnd, title.c_str());
             }
         }
+        if (dbg.theme_dirty) {
+            dbg.theme_dirty = false;
+            theme_apply(&dbg);
+            platform_window_theme(hwnd, dbg.pal->dark);
+        }
 
         ImGui_ImplDX11_NewFrame();
         ImGui_ImplWin32_NewFrame();
@@ -309,7 +358,8 @@ static int gui_win32_run(HINSTANCE hInstance, int nCmdShow,
         dcmake_frame(&dbg);
 
         ImGui::Render();
-        float clear_color[] = {0.1f, 0.1f, 0.1f, 1.0f};
+        ImVec4 clear = ImGui::ColorConvertU32ToFloat4(dbg.pal->clear);
+        float clear_color[] = {clear.x, clear.y, clear.z, 1.0f};
         g_context->OMSetRenderTargets(1, &g_rtv, nullptr);
         g_context->ClearRenderTargetView(g_rtv, clear_color);
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());

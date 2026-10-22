@@ -26,6 +26,8 @@ All source files live under `src/`:
 - `src/dap.hpp` -- DAP interface (dap_send, dap_request, process_messages, etc.)
 - `src/highlight.cpp` -- CMake syntax tokenizer
 - `src/highlight.hpp` -- Token types and tokenize_cmake prototype
+- `src/theme.cpp` -- Light/dark palettes, ImGui style colors, theme resolution
+- `src/theme.hpp` -- Palette struct, THEME_* setting values
 - `src/platform_gui_glfw.cpp` -- macOS/Linux GUI: main(), GLFW+OpenGL3 render loop, dialogs
 - `src/platform_gui_win32.cpp` -- Windows/Cygwin GUI: WinMain()/main(), Win32+DX11 render loop, dialogs
 - `src/platform_os_posix.cpp` -- macOS/Linux/Cygwin OS: fork/exec, AF_UNIX socket, POSIX file I/O
@@ -101,6 +103,14 @@ Expandable tree for nested structures.
 
 **DAP Log**: Raw protocol inspector. Every DAP message logged with ISO 8601
 timestamps. Export to NDJSON with `{"timestamp", "source", "message"}` wrapper.
+
+**Themes**: Light and dark palettes (after Prospero's), chosen by View > Theme
+(System/Dark/Light, saved as `theme=` in dcmake.ini).  System follows the
+OS live: the XDG portal's color-scheme over a dlopen'd libdbus on Linux,
+`NSApp.effectiveAppearance` on macOS, and `AppsUseLightTheme` plus
+`WM_SETTINGCHANGE` on Windows.  The GUI half sets `sys_dark`/`theme_dirty`
+and calls `theme_apply` and `platform_window_theme` (title bar) each frame
+the theme is dirty.  All drawn colors come from `dbg->pal`.
 
 ## DPI scaling
 
