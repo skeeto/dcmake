@@ -2,6 +2,7 @@ name: Release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:  # build only, to test the build without a tag
 
 permissions:
   contents: write   # gh release create
@@ -16,7 +17,11 @@ jobs:
           fetch-depth: 0
 
       - name: Install mingw-w64
-        run: sudo apt-get update && sudo apt-get install -y mingw-w64
+        # Only the x86-64 win32-thread-model compiler, which the full
+        # mingw-w64 metapackage selects through update-alternatives anyway.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends g++-mingw-w64-x86-64-win32
 
       - name: Build source tarball
         run: cmake -P cmake/SourceRelease.cmake
@@ -43,6 +48,7 @@ jobs:
 
   sign-and-release:
     needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     environment: release
     steps:
