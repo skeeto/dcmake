@@ -1,9 +1,11 @@
 #include "dcmake.hpp"
 
+#include <cerrno>
 #include <cstdio>
 #include <cstring>
 #include <string>
 
+#include <poll.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -34,11 +36,35 @@ static std::string run_dialog(const char *cmd, int *exit_code)
     *exit_code = 127;
     FILE *f = popen(cmd, "r");
     if (!f) return {};
+    // The dialog runs as a separate process, so keep pumping our own
+    // window events while waiting on it.  Otherwise the compositor or
+    // window manager pings go unanswered and dcmake gets flagged as not
+    // responding.
+    int fd = fileno(f);
     char buf[4096];
     std::string result;
-    while (fgets(buf, sizeof(buf), f))
-        result += buf;
+    for (;;) {
+        pollfd pfd = {fd, POLLIN, 0};
+        int r = poll(&pfd, 1, 50);
+        if (r < 0 && errno != EINTR) break;
+        if (r <= 0) {
+            glfwPollEvents();
+            continue;
+        }
+        ssize_t n = read(fd, buf, sizeof(buf));
+        if (n < 0 && errno == EINTR) continue;
+        if (n <= 0) break;
+        result.append(buf, n);
+    }
     int status = pclose(f);
+
+    // Like a modal dialog, drop any input the main window received while
+    // the dialog was up rather than acting on it afterward.
+    ImGuiIO &io = ImGui::GetIO();
+    io.ClearEventsQueue();
+    io.ClearInputKeys();
+    io.ClearInputMouse();
+
     if (WIFEXITED(status))
         *exit_code = WEXITSTATUS(status);
     if (*exit_code != 0) return {};
