@@ -151,13 +151,51 @@ static ID3D11Device *g_device = nullptr;
 static ID3D11DeviceContext *g_context = nullptr;
 static IDXGISwapChain *g_swapchain = nullptr;
 static ID3D11RenderTargetView *g_rtv = nullptr;
+static D3D_DRIVER_TYPE g_driver = D3D_DRIVER_TYPE_HARDWARE;
+static bool g_presented;  // a Present on this device has succeeded
 
-static void create_rtv()
+static bool create_rtv()
 {
     ID3D11Texture2D *back_buffer = nullptr;
-    g_swapchain->GetBuffer(0, IID_PPV_ARGS(&back_buffer));
-    g_device->CreateRenderTargetView(back_buffer, nullptr, &g_rtv);
+    if (FAILED(g_swapchain->GetBuffer(0, IID_PPV_ARGS(&back_buffer))))
+        return false;
+    HRESULT hr = g_device->CreateRenderTargetView(back_buffer, nullptr, &g_rtv);
     back_buffer->Release();
+    return SUCCEEDED(hr);
+}
+
+static void destroy_device()
+{
+    if (g_rtv)       { g_rtv->Release();       g_rtv = nullptr; }
+    if (g_swapchain) { g_swapchain->Release(); g_swapchain = nullptr; }
+    if (g_context)   { g_context->Release();   g_context = nullptr; }
+    if (g_device)    { g_device->Release();    g_device = nullptr; }
+}
+
+// Create the device and swap chain on g_driver, falling back to WARP.
+static bool create_device(HWND hwnd)
+{
+    for (;;) {
+        DXGI_SWAP_CHAIN_DESC sd = {};
+        sd.BufferCount = 2;
+        sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+        sd.OutputWindow = hwnd;
+        sd.SampleDesc.Count = 1;
+        sd.Windowed = TRUE;
+        sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+        HRESULT hr = D3D11CreateDeviceAndSwapChain(
+            nullptr, g_driver, nullptr, 0,
+            nullptr, 0, D3D11_SDK_VERSION,
+            &sd, &g_swapchain, &g_device, nullptr, &g_context);
+        if (SUCCEEDED(hr) && create_rtv()) {
+            g_presented = false;
+            return true;
+        }
+        destroy_device();
+        if (g_driver == D3D_DRIVER_TYPE_WARP) return false;
+        g_driver = D3D_DRIVER_TYPE_WARP;
+    }
 }
 
 static Debugger *g_dbg = nullptr;
@@ -214,6 +252,34 @@ static int64_t refresh_pace(HWND hwnd)
     return 1000000 / (hz > 1 ? hz : 60);
 }
 
+static void no_device()
+{
+    MessageBoxW(g_hwnd, L"Could not create a Direct3D 11 device.",
+                L"dcmake", MB_ICONERROR);
+    ExitProcess(1);
+}
+
+// Replace a removed or reset device.  Some drivers (e.g. VirtualBox's
+// on Windows 7) hand out a hardware device whose first Present already
+// fails, so a device lost before it ever presented falls back to WARP.
+static void reset_device()
+{
+    if (!g_presented) g_driver = D3D_DRIVER_TYPE_WARP;
+    // The DX11 backend's shutdown destroys every viewport's platform
+    // data, the main window's included, so cycle both backends.
+    if (g_ready) {
+        ImGui_ImplDX11_Shutdown();
+        ImGui_ImplWin32_Shutdown();
+    }
+    destroy_device();
+    if (!create_device(g_hwnd)) no_device();
+    if (g_ready) {
+        ImGui_ImplWin32_Init(g_hwnd);
+        ImGui_ImplDX11_Init(g_device, g_context);
+    }
+    schedforce(&g_sched);
+}
+
 // Draw a frame, unless one is already being drawn.
 static void gui_frame()
 {
@@ -250,10 +316,15 @@ static void gui_frame()
         g_context->OMSetRenderTargets(1, &g_rtv, nullptr);
         g_context->ClearRenderTargetView(g_rtv, clear_color);
         ImGui_ImplDX11_RenderDrawData(dd);
-        if (g_swapchain->Present(1, 0) == DXGI_STATUS_OCCLUDED) {
+        HRESULT hr = g_swapchain->Present(1, 0);
+        if (hr == DXGI_STATUS_OCCLUDED) {
             // Nothing shows: rest until painted or activated again.
             g_occluded = true;
             schedminimize(s, true);
+        } else if (FAILED(hr)) {
+            reset_device();
+        } else {
+            g_presented = true;
         }
     } else if (dd->Textures) {
         // Glyphs may have been added to the atlas even though the
@@ -313,10 +384,10 @@ static LRESULT CALLBACK wnd_proc(HWND hWnd, UINT msg,
         } else {
             if (g_device) {
                 if (g_rtv) { g_rtv->Release(); g_rtv = nullptr; }
-                g_swapchain->ResizeBuffers(0,
+                HRESULT hr = g_swapchain->ResizeBuffers(0,
                     (UINT)LOWORD(lParam), (UINT)HIWORD(lParam),
                     DXGI_FORMAT_UNKNOWN, 0);
-                create_rtv();
+                if (FAILED(hr) || !create_rtv()) reset_device();
             }
             g_occluded = false;
             schedminimize(&g_sched, false);
@@ -462,21 +533,7 @@ static int gui_win32_run(HINSTANCE hInstance, int nCmdShow,
     platform_window_theme(hwnd, dbg.theme == THEME_DARK ||
                                 (dbg.theme == THEME_SYSTEM && dbg.sys_dark));
 
-    // Create D3D11 device and swap chain
-    DXGI_SWAP_CHAIN_DESC sd = {};
-    sd.BufferCount = 2;
-    sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-    sd.OutputWindow = hwnd;
-    sd.SampleDesc.Count = 1;
-    sd.Windowed = TRUE;
-    sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
-
-    D3D11CreateDeviceAndSwapChain(
-        nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0,
-        nullptr, 0, D3D11_SDK_VERSION,
-        &sd, &g_swapchain, &g_device, nullptr, &g_context);
-    create_rtv();
+    if (!create_device(hwnd)) no_device();
 
     ShowWindow(hwnd, dbg.win_maximized ? SW_SHOWMAXIMIZED : nCmdShow);
     UpdateWindow(hwnd);
@@ -547,10 +604,7 @@ static int gui_win32_run(HINSTANCE hInstance, int nCmdShow,
     ImGui_ImplWin32_Shutdown();
     ImGui::DestroyContext();
 
-    if (g_rtv) g_rtv->Release();
-    if (g_swapchain) g_swapchain->Release();
-    if (g_context) g_context->Release();
-    if (g_device) g_device->Release();
+    destroy_device();
 
     DestroyWindow(hwnd);
     UnregisterClassW(L"dcmake", hInstance);
