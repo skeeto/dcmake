@@ -140,7 +140,7 @@ if(APPLE)
   )
   target_link_libraries(imgui PUBLIC glfw OpenGL::GL)
   add_executable(dcmake src/dcmake.cpp src/dap.cpp src/highlight.cpp
-                        src/theme.cpp
+                        src/theme.cpp src/sched.cpp
                         src/platform_gui_glfw.cpp src/platform_os_posix.cpp
                         src/filedialog_macos.mm)
   target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json
@@ -158,7 +158,7 @@ elseif(WIN32)
 
   configure_file(src/dcmake.rc.in dcmake.rc @ONLY)
   add_executable(dcmake WIN32 src/dcmake.cpp src/dap.cpp src/highlight.cpp
-                              src/theme.cpp
+                              src/theme.cpp src/sched.cpp
                               src/platform_gui_win32.cpp src/platform_os_win32.cpp
                               ${CMAKE_CURRENT_BINARY_DIR}/dcmake.rc)
   target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json
@@ -185,7 +185,7 @@ elseif(CYGWIN OR MSYS)
 
   configure_file(src/dcmake.rc.in dcmake.rc @ONLY)
   add_executable(dcmake src/dcmake.cpp src/dap.cpp src/highlight.cpp
-                        src/theme.cpp
+                        src/theme.cpp src/sched.cpp
                         src/platform_gui_win32.cpp src/platform_os_posix.cpp
                         ${CMAKE_CURRENT_BINARY_DIR}/dcmake.rc)
   # ole32 is for CoTaskMemFree (freeing the PIDL returned by
@@ -204,7 +204,7 @@ else()
   )
   target_link_libraries(imgui PUBLIC glfw OpenGL::GL)
   add_executable(dcmake src/dcmake.cpp src/dap.cpp src/highlight.cpp
-                        src/theme.cpp
+                        src/theme.cpp src/sched.cpp
                         src/platform_gui_glfw.cpp src/platform_os_posix.cpp)
   target_link_libraries(dcmake PRIVATE imgui nlohmann_json::nlohmann_json
                         ${CMAKE_DL_LIBS})

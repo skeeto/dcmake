@@ -35,6 +35,15 @@ static ImVec4 rgba(ImU32 c)
     return ImGui::ColorConvertU32ToFloat4(c);
 }
 
+// The time step for dcmake's own animations.  Rendering is passive, so
+// the first frame after an idle stretch has a long DeltaTime, which would
+// finish an animation in the frame that starts it.  ImGui's io.DeltaTime
+// itself stays unclamped: its hover timers depend on it.
+static float anim_dt()
+{
+    return fminf(ImGui::GetIO().DeltaTime, 1.0f / 30.0f);
+}
+
 // Scale a color's alpha by t in [0, 1].
 static ImU32 fade(ImU32 c, float t)
 {
@@ -527,8 +536,10 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
         if (margin * 2 >= window_h) margin = 0.0f;
         float top_edge = scroll_y + margin;
         float bot_edge = scroll_y + window_h - margin - line_height;
-        if (target_y < top_edge || target_y > bot_edge)
+        if (target_y < top_edge || target_y > bot_edge) {
             os->scroll_target = fmaxf(0.0f, target_y - window_h / 2.0f);
+            os->scroll_prev = -1.0f;
+        }
     }
     if (os->find_scroll && current_match.line > 0) {
         float target_y = (float)(current_match.line - 1) * line_height;
@@ -552,22 +563,31 @@ static void render_source_content(Debugger *dbg, SourceFile *sf,
         if (ImGui::IsWindowHovered() && ImGui::GetIO().MouseWheel != 0.0f) {
             os->scroll_target = -1.0f;
         } else {
-            float dt = ImGui::GetIO().DeltaTime;
+            // Rendering is passive, so an animation that cannot finish
+            // would draw forever.  Centering a line near either end aims
+            // outside the scroll range, which ImGui clamps, and ImGui
+            // rounds scroll to whole pixels, so a step under half a pixel
+            // never moves.  Either way, finish once it stops moving.
+            float dt = anim_dt();
             float cur = ImGui::GetScrollY();
             float t = 1.0f - expf(-12.0f * dt);
             float next = cur + (os->scroll_target - cur) * t;
-            if (fabsf(next - os->scroll_target) < 0.5f) {
+            if (cur == os->scroll_prev) {
+                os->scroll_target = -1.0f;  // clamped: as far as it goes
+            } else if (fabsf(next - os->scroll_target) < 0.5f ||
+                       fabsf(next - cur) < 0.5f) {
                 ImGui::SetScrollY(os->scroll_target);
                 os->scroll_target = -1.0f;
             } else {
                 ImGui::SetScrollY(next);
+                os->scroll_prev = cur;
             }
         }
     }
 
     // Decay flash
     if (os->flash_time > 0)
-        os->flash_time -= ImGui::GetIO().DeltaTime;
+        os->flash_time -= anim_dt();
 }
 
 static void render_sources(Debugger *dbg)
@@ -1503,7 +1523,11 @@ static void render_output(Debugger *dbg)
     if (ImGui::BeginChild("##output_scroll")) {
         bool at_bottom = ImGui::GetScrollY() >= ImGui::GetScrollMaxY();
         ImGui::TextUnformatted(dbg->output.c_str());
-        if (at_bottom) ImGui::SetScrollHereY(1.0f);
+        // Follow new output only when there is some: a scroll request
+        // every frame would keep passive rendering from ever resting.
+        if (at_bottom && dbg->output.size() != dbg->output_seen)
+            ImGui::SetScrollHereY(1.0f);
+        dbg->output_seen = dbg->output.size();
     }
     ImGui::EndChild();
     pop_mono_font();
@@ -2025,6 +2049,13 @@ void dcmake_stop(Debugger *dbg)
     dbg->cmake_paths.clear();
     if (!dbg->status.starts_with("Stopped (exit"))
         dbg->status = "Stopped";
+}
+
+bool dcmake_animating(Debugger *dbg)
+{
+    for (auto &os : dbg->open_sources)
+        if (os.scroll_target >= 0.0f || os.flash_time > 0) return true;
+    return false;
 }
 
 void dcmake_frame(Debugger *dbg)

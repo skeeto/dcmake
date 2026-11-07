@@ -101,6 +101,9 @@ Then press F10 to begin stepping from the first line of the script.
 * Persistent layout and state: window positions, panel visibility,
   breakpoints, and watch expressions are saved across sessions
 
+* Passive rendering: the window redraws only when something changes, so
+  an idle dcmake uses no CPU or GPU
+
 ## Configuration
 
 Layout and window state are saved to `imgui.ini` in a platform config

@@ -58,6 +58,7 @@ void reader_thread_func(Debugger *dbg)
         int n = dbg->pipe_read(dbg->platform, tmp, sizeof(tmp));
         if (n <= 0) {
             dbg->reader_running.store(false);
+            platform_wake();  // process_messages stops the session
             break;
         }
         buf.append(tmp, (size_t)n);
@@ -90,8 +91,11 @@ void reader_thread_func(Debugger *dbg)
             std::string message = buf.substr(msg_start, (size_t)content_length);
             buf.erase(0, msg_end);
 
-            std::lock_guard<std::mutex> lock(dbg->queue_mutex);
-            dbg->inbox.push_back(std::move(message));
+            {
+                std::lock_guard<std::mutex> lock(dbg->queue_mutex);
+                dbg->inbox.push_back(std::move(message));
+            }
+            platform_wake();
         }
     }
 }
@@ -153,17 +157,24 @@ void stdout_thread_func(Debugger *dbg)
             // passthrough for the remainder of this chunk and all
             // future chunks.
             in_preamble = false;
-            std::lock_guard<std::mutex> lock(dbg->queue_mutex);
-            dbg->stdout_pending.append(line);
-            dbg->stdout_pending.push_back('\n');
+            {
+                std::lock_guard<std::mutex> lock(dbg->queue_mutex);
+                dbg->stdout_pending.append(line);
+                dbg->stdout_pending.push_back('\n');
+            }
+            platform_wake();
         }
 
         if (!in_preamble && start < end) {
-            std::lock_guard<std::mutex> lock(dbg->queue_mutex);
-            dbg->stdout_pending.append(start, (size_t)(end - start));
+            {
+                std::lock_guard<std::mutex> lock(dbg->queue_mutex);
+                dbg->stdout_pending.append(start, (size_t)(end - start));
+            }
+            platform_wake();
         }
     }
     dbg->stdout_running.store(false);
+    platform_wake();
 }
 
 // --- Source file cache ---

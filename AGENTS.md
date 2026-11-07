@@ -28,6 +28,8 @@ All source files live under `src/`:
 - `src/highlight.hpp` -- Token types and tokenize_cmake prototype
 - `src/theme.cpp` -- Light/dark palettes, ImGui style colors, theme resolution
 - `src/theme.hpp` -- Palette struct, THEME_* setting values
+- `src/sched.cpp` -- Passive render scheduler (after harness's): settle frames, busy scan, deadlines, draw hashing
+- `src/sched.hpp` -- Sched/Frame structs, BUSY_* reasons, sched_* API used by the GUI halves
 - `src/platform_gui_glfw.cpp` -- macOS/Linux GUI: main(), GLFW+OpenGL3 render loop, dialogs
 - `src/platform_gui_win32.cpp` -- Windows/Cygwin GUI: WinMain()/main(), Win32+DX11 render loop, dialogs
 - `src/platform_os_posix.cpp` -- macOS/Linux/Cygwin OS: fork/exec, AF_UNIX socket, POSIX file I/O
@@ -146,7 +148,47 @@ not pause.
 A dedicated reader thread reads from the socket and parses DAP Content-Length
 framing. Complete JSON message strings are pushed into `Debugger::inbox`
 (mutex-protected). The main thread drains the queue each frame via
-`process_messages()`. Only the main thread writes to the socket.
+`process_messages()`. Only the main thread writes to the socket.  Each push
+to `inbox` or `stdout_pending`, and each reader thread's exit, calls
+`platform_wake()` so the sleeping render loop runs a frame.
+
+## Passive rendering
+
+dcmake draws only when something changes; an idle window costs no CPU or
+GPU.  `src/sched.cpp` (ported from harness) decides when a frame is due,
+and both GUI halves run the same loop: take the wake flag, wait for OS
+events up to `schedtimeout()`, take the flag again, note new ImGui input,
+then draw if `scheddue()`.  Order matters: the frame must come after the
+events that woke it are dispatched, or it is one event behind.
+
+- Input owes 3 frames, a wake 2, and frames continue until two in a row hash
+  the same.  Present is skipped when the hash matches the screen (textures
+  are still uploaded).
+- `busy` reasons are scanned from ImGui internals (held mouse/keys, fades,
+  drags, scroll targets, layout changes, ...) plus `BUSY_APP` from
+  `dcmake_animating` (smooth scroll, line flash).  Deadlines cover hover
+  delays, caret blink (stops 10 s after the last key), and ini saves.
+- Wakes: `platform_wake()` sets an atomic flag and posts
+  `glfwPostEmptyEvent` / `WM_APP_WAKE` only if it was clear.  The flag, not
+  the event, carries the request, so nested loops (dialogs, Win32 modal
+  move/resize) can't lose it.
+- GLFW uses swap interval 0 and paces itself to the monitor's refresh rate.
+  With interval 1, GLFW 3.5 on Wayland skips the swap while the window is
+  hidden, which a passive loop would leave stale until the next input.
+- Win32 keeps `Present(1, 0)`, draws from `WM_SIZE`, and runs a 10 ms timer
+  during modal move/resize so wakes and animations continue.
+
+**Rule:** anything that changes the picture without input must call
+`platform_wake()` (other threads), declare a deadline (`schedat`), or report
+busy (`dcmake_animating`).  Animations must also terminate: ImGui rounds
+scroll to whole pixels and clamps it, so the smooth scroll ends once it
+stops moving.  Animation code uses a clamped dt (`anim_dt`) since
+`io.DeltaTime` is huge after an idle stretch.
+
+`DCMAKE_SCHED_DEBUG=1` enables a staleness probe that redraws after idle
+and reports (to stderr) frames whose content changed without a wake, naming
+the changed ImDrawList owners, plus runaway animation.
+`DCMAKE_SCHED_DEBUG=2` also logs every frame with its reasons.
 
 ## DAP handshake sequence
 

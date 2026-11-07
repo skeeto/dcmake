@@ -75,6 +75,7 @@ struct OpenSource {
 
     // Smooth scrolling
     float scroll_target = -1.0f;  // <0 = inactive
+    float scroll_prev = -1.0f;    // scroll position the last animation step left
 
     // Flash highlight
     int flash_line = 0;
@@ -179,6 +180,7 @@ struct Debugger {
     bool show_dap_log = false;
     std::vector<WatchEntry> watches;
     std::string output;
+    size_t output_seen = 0;   // output.size() as last drawn
 
     // DAP message log (survives stop for post-mortem, cleared on start)
     struct DapMessage {
@@ -209,10 +211,15 @@ std::string platform_save_file_dialog();
 std::string platform_now_iso8601();
 std::string platform_config_dir();
 
+// Wake the GUI loop from any thread: something changed what it shows.
+// The GUI half implements it; dcmake renders only when there is reason.
+void platform_wake();
+
 // Shared logic called by the platform main loop.
 void dcmake_init(Debugger *dbg);
 void dcmake_load_config(Debugger *dbg);
 void dcmake_start(Debugger *dbg);
 void dcmake_stop(Debugger *dbg);
 void dcmake_frame(Debugger *dbg);
+bool dcmake_animating(Debugger *dbg);  // frames must continue
 void dcmake_shutdown(Debugger *dbg);

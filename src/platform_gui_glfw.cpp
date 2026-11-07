@@ -1,4 +1,5 @@
 #include "dcmake.hpp"
+#include "sched.hpp"
 #include "theme.hpp"
 
 #include <cerrno>
@@ -232,8 +233,10 @@ static void portal_thread(void *conn)
                               "SettingChanged"))
                 scheme = portal_signal_scheme(m);
             dbus.unref(m);
-            if (scheme >= 0)
+            if (scheme >= 0) {
                 portal_scheme.store(scheme);
+                platform_wake();
+            }
         }
     }
 }
@@ -292,11 +295,133 @@ void system_theme_watch();
 bool system_dark();
 #endif
 
+// --- Passive rendering ---
+//
+// The loop waits for events, a wake, or the scheduler's next deadline,
+// then draws only if the scheduler says a frame is due (sched.cpp).
+// Wakes from other threads are coalesced with an atomic flag: a producer
+// posts an empty event only when the flag was clear, and the loop clears
+// it before the frame drains, so every post after a drain began wakes
+// again.  The flag, not the event, carries the request, so a wake whose
+// event a nested loop consumed (run_dialog's glfwPollEvents) still counts.
+//
+// The swap interval is 0 and the scheduler paces frames to the display.
+// With a nonzero interval, GLFW 3.5 on Wayland waits up to 20 ms for a
+// frame callback and then skips the swap while the window is hidden
+// (another workspace): a frame drawn then would stay stale on screen,
+// since nothing redraws it later.  With interval 0 no swap waits on a
+// frame callback, so that hang (glfw#1350) cannot happen either.
+//
+// GLFW sends a refresh (damage) when the window must be redrawn: an
+// expose, and on macOS each step of a live resize, during which the main
+// loop is stuck inside AppKit's modal loop.  A frame is drawn right
+// there.  Key events are reported to the scheduler from a callback that
+// ImGui chains to, since ImGui drops the OS's auto-repeats from its queue.
+
+static Sched g_sched;
+static std::atomic<bool> g_wake{false};
+static GLFWwindow *g_window;
+static Debugger *g_dbg;
+
+void platform_wake()
+{
+    if (!g_wake.exchange(true))
+        glfwPostEmptyEvent();
+}
+
+static void take_wake()
+{
+    if (g_wake.exchange(false))
+        scheddirty(&g_sched);
+}
+
+static int64_t refresh_pace()
+{
+    GLFWmonitor *mon = glfwGetPrimaryMonitor();
+    const GLFWvidmode *mode = mon ? glfwGetVideoMode(mon) : nullptr;
+    int hz = mode && mode->refreshRate > 1 ? mode->refreshRate : 60;
+    return 1000000 / hz;
+}
+
+// Draw a frame, unless one is already being drawn.
+static void gui_frame()
+{
+    Debugger *dbg = g_dbg;
+    Sched *s = &g_sched;
+    if (!sched_frame_start(s)) return;
+
+    if (dbg->theme_dirty) {
+        dbg->theme_dirty = false;
+        theme_apply(dbg);
+        platform_window_theme(g_window, dbg->pal->dark);
+    }
+    if (dbg->title_dirty) {
+        dbg->title_dirty = false;
+        char cwd[1024];
+        if (getcwd(cwd, sizeof(cwd))) {
+            std::string title = std::string("dcmake - ") + cwd;
+            glfwSetWindowTitle(g_window, title.c_str());
+        }
+    }
+
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+    dcmake_frame(dbg);
+    ImGui::Render();
+    Frame f = sched_frame_end(s, dcmake_animating(dbg) ? BUSY_APP : 0);
+
+    ImDrawData *dd = ImGui::GetDrawData();
+    if (f.present) {
+        int fb_w, fb_h;
+        glfwGetFramebufferSize(g_window, &fb_w, &fb_h);
+        glViewport(0, 0, fb_w, fb_h);
+        ImVec4 clear = ImGui::ColorConvertU32ToFloat4(dbg->pal->clear);
+        glClearColor(clear.x, clear.y, clear.z, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        ImGui_ImplOpenGL3_RenderDrawData(dd);
+        glfwSwapBuffers(g_window);
+    } else if (dd->Textures) {
+        // Glyphs may have been added to the atlas even though the
+        // picture is unchanged, and must be uploaded all the same.
+        for (ImTextureData *tex : *dd->Textures)
+            if (tex->Status != ImTextureStatus_OK)
+                ImGui_ImplOpenGL3_UpdateTexture(tex);
+    }
+}
+
+static void refresh_callback(GLFWwindow *)
+{
+    schedforce(&g_sched);
+    if (g_dbg) gui_frame();
+}
+
+static void framebuffer_callback(GLFWwindow *, int, int)
+{
+    schedforce(&g_sched);
+}
+
+static void scale_callback(GLFWwindow *, float, float)
+{
+    schedforce(&g_sched);
+}
+
+static void iconify_callback(GLFWwindow *, int iconified)
+{
+    schedminimize(&g_sched, iconified);
+}
+
+static void key_callback(GLFWwindow *, int, int, int, int)
+{
+    sched_keyevent(&g_sched);
+}
+
 static void drop_callback(GLFWwindow *window, int count, const char **paths)
 {
     Debugger *dbg = (Debugger *)glfwGetWindowUserPointer(window);
     for (int i = 0; i < count; i++)
         dbg->dropped_files.push_back(paths[i]);
+    scheddirty(&g_sched);
 }
 
 // --- GLFW + OpenGL3 entry point ---
@@ -352,10 +477,16 @@ int main(int argc, char **argv)
         glfwMaximizeWindow(window);
 
     glfwMakeContextCurrent(window);
-    glfwSwapInterval(1);
+    glfwSwapInterval(0);  // paced by the scheduler: see gui_frame
     platform_set_icon(window);
     glfwSetWindowUserPointer(window, &dbg);
     glfwSetDropCallback(window, drop_callback);
+    glfwSetWindowRefreshCallback(window, refresh_callback);
+    glfwSetFramebufferSizeCallback(window, framebuffer_callback);
+    glfwSetWindowContentScaleCallback(window, scale_callback);
+    glfwSetWindowIconifyCallback(window, iconify_callback);
+    glfwSetKeyCallback(window, key_callback);  // before ImGui, which chains it
+    g_window = window;
     glfwGetWindowContentScale(window, &dbg.dpi_scale, nullptr);
 
     IMGUI_CHECKVERSION();
@@ -393,45 +524,35 @@ int main(int argc, char **argv)
             ImGui::LoadIniSettingsFromMemory(ini.data(), ini.size());
     }
 
+    // The loop: wait, dispatch everything, then decide.
+    Sched *s = &g_sched;
+    *s = newsched(sched_ticks(), refresh_pace());
+    g_dbg = &dbg;  // gui_frame may run from callbacks from here on
     while (!glfwWindowShouldClose(window) && !dbg.want_quit) {
-        glfwPollEvents();
+        take_wake();
+        s->now = sched_ticks();
+        int64_t timeout = schedtimeout(s);
+        int queued = sched_queued();
+        if (timeout < 0) {
+            glfwWaitEvents();
+        } else if (timeout > 0) {
+            glfwWaitEventsTimeout((double)timeout / 1e6);
+        } else {
+            glfwPollEvents();
+        }
+        sched_takeinput(s, queued);
+        take_wake();
 
         bool dark = system_dark();
         if (dark != dbg.sys_dark) {
             dbg.sys_dark = dark;
             dbg.theme_dirty = true;
         }
-        if (dbg.theme_dirty) {
-            dbg.theme_dirty = false;
-            theme_apply(&dbg);
-            platform_window_theme(window, dbg.pal->dark);
-        }
+        if (dbg.theme_dirty) schedforce(s);
+        if (dbg.title_dirty) scheddirty(s);
 
-        if (dbg.title_dirty) {
-            dbg.title_dirty = false;
-            char cwd[1024];
-            if (getcwd(cwd, sizeof(cwd))) {
-                std::string title = std::string("dcmake - ") + cwd;
-                glfwSetWindowTitle(window, title.c_str());
-            }
-        }
-
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
-
-        dcmake_frame(&dbg);
-
-        ImGui::Render();
-        int fb_w, fb_h;
-        glfwGetFramebufferSize(window, &fb_w, &fb_h);
-        glViewport(0, 0, fb_w, fb_h);
-        ImVec4 clear = ImGui::ColorConvertU32ToFloat4(dbg.pal->clear);
-        glClearColor(clear.x, clear.y, clear.z, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
-        glfwSwapBuffers(window);
+        s->now = sched_ticks();
+        if (scheddue(s)) gui_frame();
     }
 
     // Capture window geometry before shutdown

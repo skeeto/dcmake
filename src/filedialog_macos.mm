@@ -63,10 +63,32 @@ std::string platform_save_file_dialog()
     return {};
 }
 
-// NSApp follows the system appearance, read each frame.  Windows get an
-// explicit appearance when the user picks one, which leaves NSApp alone.
+// NSApp follows the system appearance.  Windows get an explicit appearance
+// when the user picks one, which leaves NSApp alone.  Rendering is passive,
+// so a change must wake the loop, which then reads system_dark() again.
+void platform_wake();
+
+@interface DcmakeThemeObserver : NSObject
+@end
+
+@implementation DcmakeThemeObserver
+- (void)observeValueForKeyPath:(NSString *)keyPath
+                      ofObject:(id)object
+                        change:(NSDictionary *)change
+                       context:(void *)context
+{
+    platform_wake();
+}
+@end
+
 void system_theme_watch()
 {
+    static DcmakeThemeObserver *observer;  // for the life of the program
+    observer = [[DcmakeThemeObserver alloc] init];
+    [NSApp addObserver:observer
+            forKeyPath:@"effectiveAppearance"
+               options:0
+               context:nullptr];
 }
 
 bool system_dark()
