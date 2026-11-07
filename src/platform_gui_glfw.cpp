@@ -424,12 +424,42 @@ static void drop_callback(GLFWwindow *window, int count, const char **paths)
     scheddirty(&g_sched);
 }
 
+// GLFW's last error, kept for the message when a step fails.
+static char g_glfw_error[512];
+
+static void error_callback(int, const char *why)
+{
+    snprintf(g_glfw_error, sizeof(g_glfw_error), "%s", why);
+}
+
+static void glfw_failed(const char *what, const char *why)
+{
+    if (*why)
+        fprintf(stderr, "dcmake: %s: %s\n", what, why);
+    else
+        fprintf(stderr, "dcmake: %s\n", what);
+}
+
+// The context a window is made for: OpenGL 3.2 core, which every GPU of
+// the last fifteen years has, or OpenGL ES 3.0, which some virtual GPUs
+// give alone (UTM's accelerated one: desktop OpenGL only to 2.1).
+static void gl_hints(bool es)
+{
+    glfwWindowHint(GLFW_CLIENT_API, es ? GLFW_OPENGL_ES_API : GLFW_OPENGL_API);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, es ? 0 : 2);
+    glfwWindowHint(GLFW_OPENGL_PROFILE,
+                   es ? GLFW_OPENGL_ANY_PROFILE : GLFW_OPENGL_CORE_PROFILE);
+    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, es ? GLFW_FALSE : GLFW_TRUE);
+}
+
 // --- GLFW + OpenGL3 entry point ---
 
 int main(int argc, char **argv)
 {
+    glfwSetErrorCallback(error_callback);
     if (!glfwInit()) {
-        fprintf(stderr, "dcmake: glfwInit failed\n");
+        glfw_failed("glfwInit failed", g_glfw_error);
         return 1;
     }
 
@@ -448,17 +478,33 @@ int main(int argc, char **argv)
     system_theme_watch();
     dbg.sys_dark = system_dark();
 
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
-
+    bool gles = false;
+    gl_hints(false);
+    *g_glfw_error = 0;
     GLFWwindow *window = glfwCreateWindow(dbg.win_w, dbg.win_h,
                                           "dcmake", nullptr, nullptr);
     if (!window) {
-        fprintf(stderr, "dcmake: failed to create window\n");
+        std::string core = g_glfw_error;
+#ifndef __APPLE__
+        gl_hints(true);
+        *g_glfw_error = 0;
+        window = glfwCreateWindow(dbg.win_w, dbg.win_h,
+                                  "dcmake", nullptr, nullptr);
+        if (window) {
+            gles = true;
+            fprintf(stderr, "dcmake: using OpenGL ES 3.0, as OpenGL 3.2 core"
+                            " is not available: %s\n", core.c_str());
+        } else {
+            glfw_failed("no OpenGL 3.2 core context", core.c_str());
+            glfw_failed("nor OpenGL ES 3.0", g_glfw_error);
+            glfwTerminate();
+            return 1;
+        }
+#else
+        glfw_failed("no OpenGL 3.2 core context", core.c_str());
         glfwTerminate();
         return 1;
+#endif
     }
     if (dbg.win_x >= 0 && dbg.win_y >= 0) {
         glfwSetWindowPos(window, dbg.win_x, dbg.win_y);
@@ -493,7 +539,7 @@ int main(int argc, char **argv)
     ImGui::CreateContext();
 
     ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init("#version 150");
+    ImGui_ImplOpenGL3_Init(gles ? "#version 300 es" : "#version 150");
 
     ImGuiIO &io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
